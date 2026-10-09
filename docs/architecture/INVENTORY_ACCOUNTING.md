@@ -4,6 +4,15 @@
 LIFO excluded.**
 **Reverses the Phase 0 leaning toward "periodic + derived closing stock".**
 
+> ⚠️ **SUPERSEDED IN PART — 2026-10-09.** Decision **B-1** chose **periodic,
+> form 5a** (perpetual quantities, periodic valuation, closing-stock adjustment
+> posted as a real voucher) after the target customer was set as traders and
+> SMEs. §3's perpetual recommendation and §5.2 (COGS on issue) therefore do
+> **not** apply. Still binding: §4 methods (subject to I-1), §5.1 persisted
+> layers (decision A-1), §5.3 granularity (subject to I-2), §5.4 transfers,
+> §5.5 sign-aware returns, §5.8 batches, and all of §6.
+> See `docs/decisions/OPEN_DECISIONS.md` B-1 and `B1_INVENTORY_DECISION_BRIEF.md`.
+
 ---
 
 ## 1. What the reference actually is (verified)
