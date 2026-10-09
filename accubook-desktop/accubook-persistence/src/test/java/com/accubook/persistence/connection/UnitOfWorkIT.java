@@ -38,7 +38,7 @@ class UnitOfWorkIT {
     @BeforeEach
     void setUp() throws SQLException {
         database = Database.open(dir.resolve("uow.db"));
-        database.inTransaction(connection -> {
+        database.inUnguardedTransaction(connection -> {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE entry ("
                         + "id TEXT PRIMARY KEY, "

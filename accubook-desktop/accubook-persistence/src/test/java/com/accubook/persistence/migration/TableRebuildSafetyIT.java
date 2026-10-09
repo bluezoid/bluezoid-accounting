@@ -36,7 +36,7 @@ class TableRebuildSafetyIT {
             createParentAndChild(database);
 
             // The naive rebuild: drop the parent while FK enforcement is on.
-            database.inTransaction(connection -> {
+            database.inUnguardedTransaction(connection -> {
                 try (Statement statement = connection.createStatement()) {
                     statement.execute("CREATE TABLE parent_new (id TEXT PRIMARY KEY, extra TEXT) STRICT");
                     statement.execute("INSERT INTO parent_new (id) SELECT id FROM parent");
@@ -65,7 +65,7 @@ class TableRebuildSafetyIT {
             database.executeOutsideTransaction("PRAGMA foreign_keys = OFF");
             assertThat(database.readPragma("foreign_keys")).isEqualTo("0");
 
-            database.inTransaction(connection -> {
+            database.inUnguardedTransaction(connection -> {
                 try (Statement statement = connection.createStatement()) {
                     statement.execute("CREATE TABLE parent_new (id TEXT PRIMARY KEY, extra TEXT) STRICT");
                     statement.execute("INSERT INTO parent_new (id) SELECT id FROM parent");
@@ -92,7 +92,7 @@ class TableRebuildSafetyIT {
     }
 
     private void createParentAndChild(Database database) throws SQLException {
-        database.inTransaction(connection -> {
+        database.inUnguardedTransaction(connection -> {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE parent (id TEXT PRIMARY KEY) STRICT");
                 statement.execute("CREATE TABLE child ("

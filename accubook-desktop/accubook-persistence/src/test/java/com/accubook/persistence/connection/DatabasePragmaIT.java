@@ -44,7 +44,7 @@ class DatabasePragmaIT {
     @DisplayName("foreign keys are enforced, not merely configured")
     void foreignKeysAreEnforced(@TempDir Path dir) throws SQLException {
         try (Database database = Database.open(dir.resolve("fk.db"))) {
-            database.inTransaction(connection -> {
+            database.inUnguardedTransaction(connection -> {
                 try (Statement statement = connection.createStatement()) {
                     statement.execute("CREATE TABLE parent (id TEXT PRIMARY KEY) STRICT");
                     statement.execute("CREATE TABLE child ("
@@ -89,7 +89,7 @@ class DatabasePragmaIT {
     @DisplayName("read connections are query_only and cannot write")
     void readConnectionsCannotWrite(@TempDir Path dir) throws SQLException {
         try (Database database = Database.open(dir.resolve("ro.db"))) {
-            database.inTransaction(connection -> {
+            database.inUnguardedTransaction(connection -> {
                 try (Statement statement = connection.createStatement()) {
                     statement.execute("CREATE TABLE t (id TEXT PRIMARY KEY) STRICT");
                 }
@@ -110,7 +110,7 @@ class DatabasePragmaIT {
     @DisplayName("STRICT tables reject a float in an INTEGER money column")
     void strictTablesRejectFloats(@TempDir Path dir) throws SQLException {
         try (Database database = Database.open(dir.resolve("strict.db"))) {
-            database.inTransaction(connection -> {
+            database.inUnguardedTransaction(connection -> {
                 try (Statement statement = connection.createStatement()) {
                     statement.execute("CREATE TABLE m (id TEXT PRIMARY KEY, amount_e4 INTEGER NOT NULL) STRICT");
                 }
