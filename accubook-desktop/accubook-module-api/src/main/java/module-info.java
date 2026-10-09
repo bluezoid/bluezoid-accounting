@@ -11,7 +11,10 @@ module accubook.module.api {
     // empty-result behaviour with an explicit provider list, which does not go
     // through this code path.
     uses com.accubook.module.FeatureModule;
+    // Documents reach inventory through this port, never by requiring it.
+    uses com.accubook.module.stock.StockPort;
 
     exports com.accubook.module;
     exports com.accubook.module.plan;
+    exports com.accubook.module.stock;
 }
