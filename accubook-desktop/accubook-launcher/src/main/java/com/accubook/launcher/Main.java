@@ -1,6 +1,8 @@
 package com.accubook.launcher;
 
 import com.accubook.app.company.CompanyService;
+import com.accubook.module.ModuleRegistry;
+import com.accubook.module.ModuleStateProvider;
 import com.accubook.ui.shell.ShellApplication;
 import javafx.application.Application;
 
@@ -22,9 +24,19 @@ public final class Main {
 
     public static void main(String[] args) {
         Path dataRoot = resolveDataRoot(args);
+
+        // The modules physically in this image, and what each may do. Both are
+        // handed to CompanyService, which installs the persistence guard from
+        // them on every company it opens.
+        ModuleRegistry modules = ModuleRegistry.discover();
+        ModuleStateProvider states = LicenceMode.select(
+                System.getProperty(LicenceMode.CHANNEL_PROPERTY, "development"), modules);
+        System.err.println("WARNING: development build - every packaged module is ACTIVE "
+                + "without a licence (P7-7). Modules: " + modules.installedModuleIds());
+
         ShellApplication.setServiceFactory(() -> dataRoot == null
-                ? CompanyService.startAtDefaultLocation()
-                : CompanyService.start(dataRoot));
+                ? CompanyService.startAtDefaultLocation(modules, states)
+                : CompanyService.start(dataRoot, modules, states));
         Application.launch(ShellApplication.class, args);
     }
 
