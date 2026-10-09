@@ -6,9 +6,9 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-6 (2026-10-09).
+B-1, P7-1…P7-6, P6-4-UI (2026-10-09).
 
-**Still open:** B-2 · B-4 · B-5 · P6-4-UI · I-1…I-3, I-6…I-18 · N-2…N-9.
+**Still open:** B-2 · B-4 · B-5 · I-1…I-3, I-6…I-18 · N-2…N-9.
 
 ## Classification
 
@@ -359,7 +359,24 @@ model. **Depends on it:** Phase 6, Phase 11.
 enough to demonstrate the exit criterion without pre-empting P7's document
 screens. **Depends on it:** Phase 6.
 
-## P6-4-UI · Trial-balance screen — DEFERRED, prerequisite outstanding
+## P6-4-UI · Trial-balance screen — ✅ **CLOSED 2026-10-09**
+
+> **Prerequisite met and screen built.** Xvfb was installed. The UI tests had
+> never actually run: the failsafe config forced Monocle even on a real display,
+> and Monocle fails on JavaFX 17. Switched to GTK glass on Xvfb; one stale test
+> id (renamed button) surfaced and was fixed.
+>
+> Delivered: `TrialBalanceView` — fiscal-year picker (opens on the year
+> containing today), debit/credit in Indian grouping, totals, out-of-balance
+> warning with the difference, deactivated accounts with a balance marked.
+> Read-only by construction: data comes through
+> `CompanyService.readOpenCompany`, a guarded `query_only` connection.
+> 6 new UI tests (5 view, 1 end to end through the shell), stable across
+> repeated runs. Command:
+> `xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true`
+>
+> **Still true:** no CI pipeline exists in the repository, so UI tests run only
+> where someone runs that command.
 
 **Status.** P6-4 was approved as a product requirement: use cases plus a minimal
 read-only trial-balance screen. The use cases and the trial-balance computation
