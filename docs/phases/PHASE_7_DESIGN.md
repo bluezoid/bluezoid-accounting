@@ -1,6 +1,6 @@
 # Phase 7 Design — Parties, Inventory Masters, Sales & Purchase Documents
 
-**Status:** DESIGN — awaiting decisions P7-1…P7-6 · **Date:** 2026-10-09
+**Status:** APPROVED 2026-10-09 (P7-1…P7-6 as recommended) · **Date:** 2026-10-09
 **Unblocked by:** B-1 decided 2026-10-09 — **periodic, form 5a**
 **Baseline verified:** 373 passing · 0 failing · 3 UI skipped (clean
 `mvn -o clean verify`, 2026-10-09)
