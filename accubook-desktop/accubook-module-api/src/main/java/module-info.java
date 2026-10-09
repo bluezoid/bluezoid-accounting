@@ -1,6 +1,8 @@
 /** The SPI that feature modules implement. Kept tiny and dependency-free. */
 module accubook.module.api {
     requires accubook.platform;
+    // ModuleTransactions hands modules a java.sql.Connection.
+    requires transitive java.sql;
 
     // Without this, ServiceLoader.load(FeatureModule.class) throws
     // ServiceConfigurationError ("does not declare `uses`") rather than
