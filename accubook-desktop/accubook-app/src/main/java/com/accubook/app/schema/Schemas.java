@@ -59,7 +59,7 @@ public final class Schemas {
      */
     public static List<Migration> companyDatabase() {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
-                COMPANY_V3_ACCOUNT_GOVERNANCE);
+                COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES);
     }
 
     /**
@@ -514,5 +514,68 @@ public final class Schemas {
             END;
 
             CREATE INDEX idx_ledger_system ON ledger (is_system) WHERE is_system = 1;
+            """);
+
+    /**
+     * Phase 7a parties.
+     *
+     * <p>A party is bound to its ledger by {@code ledger_id}, created with it in
+     * one transaction. The reference binds them by display name -
+     * {@code upsertLedgerByName} does {@code ON CONFLICT (name) ... RETURNING id}
+     * - so a party named "Cash in Hand" silently attaches to the cash ledger and
+     * its receivables post into cash (R-5). Here a name clash is refused by the
+     * {@code UNIQUE (name)} on {@code ledger}, and nothing ever looks a party's
+     * ledger up by name.
+     *
+     * <p>Parties are kernel (B-7): no module owns this table, so it is never
+     * entitlement-gated.
+     */
+    private static final Migration COMPANY_V4_PARTIES = new Migration(4, "parties", """
+            CREATE TABLE party (
+                id               TEXT    NOT NULL PRIMARY KEY,
+                ledger_id        TEXT    NOT NULL UNIQUE REFERENCES ledger (id),
+                -- P7-2: one ledger per party. BOTH sits under Sundry Debtors
+                -- and its net balance is the position.
+                role             TEXT    NOT NULL
+                    CHECK (role IN ('CUSTOMER', 'VENDOR', 'BOTH')),
+                name             TEXT    NOT NULL,
+                code             TEXT,
+                contact_person   TEXT,
+                email            TEXT,
+                phone            TEXT,
+                address_line1    TEXT,
+                address_city     TEXT,
+                -- Place-of-supply input for GST (P9). Stored now so P9 does not
+                -- have to backfill it.
+                state_code       TEXT,
+                postal_code      TEXT,
+                gstin            TEXT,
+                pan              TEXT,
+                credit_limit_e4  INTEGER CHECK (credit_limit_e4 IS NULL OR credit_limit_e4 >= 0),
+                credit_days      INTEGER CHECK (credit_days IS NULL OR credit_days >= 0),
+                is_active        INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                created_at       INTEGER NOT NULL,
+                updated_at       INTEGER NOT NULL,
+                UNIQUE (name),
+                UNIQUE (code)
+            ) STRICT;
+
+            -- A party's ledger cannot be swapped for another. Re-pointing it
+            -- would move the party's whole history to a different account.
+            CREATE TRIGGER party_ledger_immutable
+            BEFORE UPDATE OF ledger_id ON party
+            WHEN NEW.ledger_id IS NOT OLD.ledger_id
+            BEGIN
+                SELECT RAISE(ABORT, 'A party cannot be moved to a different ledger');
+            END;
+
+            -- The foreign key would refuse this too, but P2 measured that
+            -- foreign_keys is per connection; a trigger does not depend on it.
+            CREATE TRIGGER ledger_no_delete_with_party
+            BEFORE DELETE ON ledger
+            BEGIN
+                SELECT RAISE(ABORT, 'This ledger belongs to a party; delete the party instead')
+                WHERE EXISTS (SELECT 1 FROM party WHERE ledger_id = OLD.id);
+            END;
             """);
 }

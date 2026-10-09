@@ -54,12 +54,13 @@ class SchemaMigrationSafetyIT {
             MigrationResult result = runner(dir, Schemas.companyDatabase()).migrate(database);
 
             assertThat(result.changed()).isTrue();
-            // Migration 2 (P5) posting invariants; migration 3 (P6) account
-            // governance.
-            assertThat(result.toVersion()).isEqualTo(3);
+            // Migration 2 (P5) posting invariants; 3 (P6) account governance;
+            // 4 (P7a) parties.
+            assertThat(result.toVersion()).isEqualTo(4);
             assertThat(tables(database)).contains(
                     "company_info", "fiscal_year", "ledger_group", "ledger",
-                    "voucher_type", "number_counter", "voucher", "voucher_entry", "audit_log");
+                    "voucher_type", "number_counter", "voucher", "voucher_entry", "audit_log",
+                    "party");
         }
     }
 
