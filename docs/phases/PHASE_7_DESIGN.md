@@ -376,3 +376,66 @@ movements, in one transaction. The number stays used.
 | **P7-11** | Must a credit/debit note reference an original document? | **Yes**: a posted document of the same party, and the note's total may not exceed what remains un-credited. GST returns (P9) need the reference. |
 | **P7-12** | Cancelling a posted document | Allowed only while nothing is allocated against it (P7d) and no note references it; posts a reversal and restores stock; the number stays used. |
 
+---
+
+## 13. P7d detailed design — settlement, outstanding, aging, statements
+
+**Status:** DESIGN — awaiting P7-13…P7-17.
+
+### 13.1 Reference research
+
+| ID | Finding | Evidence |
+|---|---|---|
+| R-6 | Settlement is 1:1: a receipt names at most one invoice; an unlinked receipt reduces nothing. | `Receipt.invoiceId` |
+| R-7 | `amountPaid`/`amountDue` cached on the invoice, recomputed by hand. | `posting.ts:481-560` |
+| **R-12** *(new)* | Aging's "as of" is cosmetic: it subtracts **today's** `amountPaid`, filters on **today's** status and has no date filter, so an aging run for last March includes invoices raised in April and ignores payments made since. | `reports/aging/route.ts:100-140` |
+| **R-13** *(new)* | Receivables aging has **no document-type filter**: a credit note (type `CREDIT_NOTE`, status `SENT`) is aged as money the customer owes. Every credit note **inflates** receivables. | `reports/aging/route.ts:97-101` |
+| D-21 | The over-allocation check runs outside the transaction. | (P0) |
+
+### 13.2 Model
+
+```
+receipt (sales side)   ──<  sales_allocation  >──  sales invoice
+credit note            ──<                    >──
+payment (purchase)     ──<  purchase_allocation >──  purchase bill
+debit note             ──<                      >──
+```
+
+- A **receipt** posts `Dr Cash/Bank, Cr customer`; a **payment** posts
+  `Dr vendor, Cr Cash/Bank` — through `TransactionalPosting`, numbered
+  `RCT/26-27/00001` / `PAY/26-27/00001` at posting, like documents (P7-8).
+- An **allocation** matches a credit source (receipt or note) to an invoice. It
+  moves no ledger balance — the voucher already did — so it only records *which*
+  invoice was paid. It can be removed and redone.
+- **Outstanding** = invoice total − Σ live allocations, in SQL, never stored
+  (P7-3). Unallocated receipt money is an **on-account advance**.
+- Over-allocation is refused **inside** the transaction (D-21): a source cannot
+  allocate more than its amount, an invoice cannot receive more than its total.
+- **Status** (`OPEN`, `PARTIAL`, `SETTLED`, `OVERDUE`) is derived, total —
+  every input maps to one status (the reference's good idea).
+- **Cancelling** a receipt reverses its voucher and removes its allocations.
+  Cancelling an invoice is now refused while allocations exist (completes P7-12).
+
+### 13.3 Reports
+- **Outstanding by party** and **aging** at any as-of date: documents dated on or
+  before it, allocations whose source is dated on or before it — correct
+  historically (fixes R-12). Notes and receipts are never aged as receivables
+  (fixes R-13); unallocated credits are shown separately as advances.
+- **Party statement:** the party ledger's posted entries between two dates with
+  an opening balance (movements before the start) and running balance — from
+  the journal, so it reconciles with the trial balance by construction.
+
+### 13.4 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P7-13** | A posted credit/debit note and its original invoice | **Apply automatically**: at posting, allocate the note to its original document up to that document's outstanding; anything beyond (the invoice was already paid) stays as an unallocated credit for the party. |
+| **P7-14** | Receipts and payments: draft first, or posted on entry? | **Posted on entry**, no drafts. Money received is a fact; a wrong receipt is cancelled (reversal kept), not edited. |
+| **P7-15** | Aging basis | **Days past due date**; a document with no due date ages from its document date. Buckets: not yet due, 1–30, 31–60, 61–90, over 90. |
+| **P7-16** | Which accounts may receive or pay money until banking (P10) exists | **Any active ledger in the Cash & Bank group** (Cash in Hand, or bank ledgers the customer creates in the chart). |
+| **P7-17** | Credit/debit notes returning goods | **Per-item quantity check**: a note may not return more of an item than the original document carried, less earlier notes. Today only the amount is limited. |
+
+Not in P7d: TDS netting and TCS (P9), refunds of a party's credit balance
+(record as a payment to a customer / receipt from a vendor — a later decision),
+bank reconciliation (P10), cheque bounce workflow beyond cancellation.
+
