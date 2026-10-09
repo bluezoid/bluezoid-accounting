@@ -73,12 +73,13 @@ class BookkeepingCycleIT {
     void freshCompanyBalances() {
         TrialBalance tb = chart.trialBalance(fiscalYear);
 
-        // A-8: four zero rows totalling 0 = 0 is a legitimate *report*. This is
+        // A-8: zero rows totalling 0 = 0 is a legitimate *report*. This is
         // not the A-1 degenerate-voucher case, where 0 = 0 was a meaningless
         // transaction.
         assertAll(
                 () -> assertTrue(tb.balances()),
-                () -> assertEquals(4, tb.rows().size()),
+                () -> assertEquals(chart.allAccounts().size(), tb.rows().size(),
+                        "every account appears, even with no movement"),
                 () -> assertTrue(tb.nonZeroRows().isEmpty()),
                 () -> assertEquals(0, tb.totalDebit().signum()));
     }
@@ -116,7 +117,7 @@ class BookkeepingCycleIT {
                 () -> assertTrue(afterReversal.balances(), "must still balance after reversal"),
                 () -> assertEquals(0, afterReversal.totalDebit().signum(),
                         "a reversal in the same year nets the accounts back to zero"),
-                () -> assertEquals(4, afterReversal.rows().size(),
+                () -> assertEquals(chart.allAccounts().size(), afterReversal.rows().size(),
                         "every account still appears"));
     }
 

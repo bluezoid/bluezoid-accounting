@@ -26,6 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ChartGovernanceIT {
 
+    /** 4 kernel ledgers (P2-1) plus Sales and Purchases (P7c). */
+    private static final long SEEDED_LEDGERS = 6;
+
+
     @TempDir
     Path directory;
 
@@ -48,23 +52,27 @@ class ChartGovernanceIT {
     class Provisioning {
 
         @Test
-        @DisplayName("seeds 18 groups, 4 ledgers and 8 voucher types")
+        @DisplayName("seeds 18 groups, 6 ledgers and 8 voucher types")
         void seedsExpectedCounts() throws SQLException {
+            // 4 kernel ledgers (P2-1) plus Sales and Purchases (P7c), whose
+            // modules are in every plan.
             assertAll(
                     () -> assertEquals(18, fixture.count("ledger_group")),
-                    () -> assertEquals(4, fixture.count("ledger")),
+                    () -> assertEquals(SEEDED_LEDGERS, fixture.count("ledger")),
                     () -> assertEquals(8, fixture.count("voucher_type")));
         }
 
         @Test
-        @DisplayName("P2-1 holds: no module ledger is seeded")
+        @DisplayName("P2-1 holds: no ledger is seeded for a module that is not in every plan")
         void doesNotSeedModuleLedgers() throws SQLException {
-            // Seeding a GST or COGS account in a build without its module would
-            // put a line on the trial balance nothing can ever post to. COGS in
-            // particular would silently commit to perpetual inventory, which is
-            // B-1 and not P6's to decide.
+            // Seeding a GST account in a build without its module would put a
+            // line on the trial balance nothing can ever post to. COGS would
+            // contradict B-1 (periodic 5a: no cost of goods sold at issue).
+            // Sales and Purchases ARE seeded: their modules are in every plan.
+            assertTrue(chart.findBySystemCode("SALES").isPresent());
+            assertTrue(chart.findBySystemCode("PURCHASES").isPresent());
             for (String code : new String[]{"GST_INPUT", "GST_OUTPUT", "COGS",
-                    "PURCHASE_ACCOUNTS", "INVENTORY_ADJUSTMENT"}) {
+                    "INVENTORY_ADJUSTMENT"}) {
                 assertTrue(chart.findBySystemCode(code).isEmpty(),
                         code + " must not be seeded by the kernel");
             }
@@ -104,7 +112,7 @@ class ChartGovernanceIT {
 
             assertAll(
                     () -> assertTrue(e.getMessage().contains("cannot be deleted"), e.getMessage()),
-                    () -> assertEquals(4, fixture.count("ledger")));
+                    () -> assertEquals(SEEDED_LEDGERS, fixture.count("ledger")));
         }
 
         @Test
@@ -119,7 +127,7 @@ class ChartGovernanceIT {
                         }
                     }));
 
-            assertEquals(4, fixture.count("ledger"));
+            assertEquals(SEEDED_LEDGERS, fixture.count("ledger"));
         }
 
         @Test
@@ -158,6 +166,7 @@ class ChartGovernanceIT {
         @DisplayName("a system ledger may be renamed and still resolves by code")
         void renameDoesNotBreakResolution() throws SQLException {
             String roundOff = fixture.ledgerIdBySystemCode("ROUND_OFF");
+            long ledgersBefore = fixture.count("ledger");
 
             chart.rename(roundOff, "Rounding A/c", 1L);
 
@@ -168,13 +177,14 @@ class ChartGovernanceIT {
             assertAll(
                     () -> assertEquals("Rounding A/c", resolved.name()),
                     () -> assertEquals(roundOff, resolved.id()),
-                    () -> assertEquals(4, fixture.count("ledger"), "no duplicate was created"));
+                    () -> assertEquals(ledgersBefore, fixture.count("ledger"), "no duplicate was created"));
         }
 
         @Test
         @DisplayName("renaming back also works - identity never depended on the label")
         void renameIsReversible() throws SQLException {
             String roundOff = fixture.ledgerIdBySystemCode("ROUND_OFF");
+            long ledgersBefore = fixture.count("ledger");
 
             chart.rename(roundOff, "Rounding A/c", 1L);
             chart.rename(roundOff, "Round Off", 2L);
@@ -269,12 +279,13 @@ class ChartGovernanceIT {
         @Test
         @DisplayName("an unused user account can be deleted")
         void unusedUserAccountDeletable() throws SQLException {
+            long seeded = fixture.count("ledger");
             String ledger = fixture.createUserLedger("Stationery", "INDIRECT_EXPENSES");
-            assertEquals(5, fixture.count("ledger"));
+            assertEquals(seeded + 1, fixture.count("ledger"));
 
             chart.delete(ledger);
 
-            assertEquals(4, fixture.count("ledger"));
+            assertEquals(seeded, fixture.count("ledger"));
         }
 
         @Test

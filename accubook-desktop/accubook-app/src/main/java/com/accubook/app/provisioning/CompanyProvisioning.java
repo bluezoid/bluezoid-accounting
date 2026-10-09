@@ -79,7 +79,12 @@ public final class CompanyProvisioning {
             // trial balance out by its own amount.
             new LedgerSeed("OPENING_BALANCE_EQUITY", "Opening Balance Equity", "CAPITAL_ACCOUNT"),
             new LedgerSeed("RETAINED_EARNINGS", "Retained Earnings", "CAPITAL_ACCOUNT"),
-            new LedgerSeed("ROUND_OFF", "Round Off", "INDIRECT_EXPENSES")
+            new LedgerSeed("ROUND_OFF", "Round Off", "INDIRECT_EXPENSES"),
+            // P7c: sales-invoicing and purchase-billing are in every plan (B-7),
+            // so their ledgers are seeded for every company. Purchases sits in
+            // Direct Expenses because inventory is periodic (B-1, 5a).
+            new LedgerSeed("SALES", "Sales", "SALES_ACCOUNTS"),
+            new LedgerSeed("PURCHASES", "Purchases", "DIRECT_EXPENSES")
     );
 
     /** The eight standard voucher types, per company rather than global. */
