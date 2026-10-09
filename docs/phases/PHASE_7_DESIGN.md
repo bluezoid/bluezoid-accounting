@@ -222,3 +222,67 @@ ledgers by migration for existing companies and by provisioning for new ones.
 I-1 costing method, I-2 granularity, I-3 scrap (P8) · B-4 GST rounding (P9) ·
 TDS/TCS (P9) · bank ledgers (P10) · UoM conversion (`conversionFactor`, schema
 only in the reference) — **deferred**: P7 items have one unit.
+
+---
+
+## 11. P7b detailed design — inventory, the first real optional module
+
+### 11.1 Physical module
+New Maven module **`accubook-inventory`** → JPMS `accubook.inventory`, the id
+`build.sh` derives from plan module `inventory`. It `requires` only
+`accubook.module.api` and `accubook.platform` — **never** persistence, licensing
+or another feature (architecture test). It `provides FeatureModule with
+InventoryModule`, which declares `ownedTables()` and `historicalViews()`.
+
+Present in PROFESSIONAL and ENTERPRISE images; absent from BASIC. In a BASIC
+build its tables still exist (universal schema) and are `DORMANT` if they hold
+data.
+
+### 11.2 Schema — migration 5 (all owned by `inventory`)
+
+| Table | Key points |
+|---|---|
+| `unit` | per company; `symbol` unique ignoring case; `decimals` 0–4 (how many places a quantity in this unit may carry) |
+| `item_category` | optional hierarchy, name unique |
+| `item` | `kind` `GOODS`/`SERVICE`; `unit_id`; `sku` unique when present; `hsn_sac` stored for P9; `is_active` |
+| `warehouse` | name unique; `is_active` |
+| `stock` | `(item_id, warehouse_id)` PK, `quantity_e4 >= 0` CHECK — the negative-stock refusal (P7-4) is enforced by the database as well as by the guarded decrement |
+| `stock_movement` | append-only (triggers refuse UPDATE/DELETE); `movement_type`, `direction` derived from type and CHECKed against which warehouse columns are set; `quantity_e4 > 0`; optional `unit_cost_e4` recorded for P8, read by nothing in P7; `source_type`/`source_id` for the document that caused it |
+
+A service item can never appear in `stock` or `stock_movement` (trigger).
+
+### 11.3 Movements
+`OPENING`, `PURCHASE`, `SALES_RETURN`, `ADJUSTMENT_IN` bring stock in;
+`SALE`, `PURCHASE_RETURN`, `ADJUSTMENT_OUT` take it out; `TRANSFER` does both
+and creates no value. Every out-movement is a **guarded decrement**: a single
+`UPDATE … WHERE quantity_e4 >= ?` whose row count decides, so two concurrent
+sales of the last unit cannot both succeed. `stock` is a cache of the movement
+log with a **verification routine** that recomputes it and reports any
+disagreement (I-4: a cache is allowed only if it is rebuildable and verified).
+
+Movements are corrected by an opposite movement, never edited — the same rule as
+vouchers.
+
+### 11.4 Enforcement — all three layers, in production
+1. **Use case:** every mutating `Inventory` method calls
+   `EntitlementGuard.requireWritable(inventory, …)` first.
+2. **Persistence:** `CompanyService` installs `ModuleWriteAuthorization` on
+   every company database it opens, from a `ModuleRegistry` and a
+   `ModuleStateProvider` handed to it by the composition root. The default
+   `permitAll` is no longer reachable from the application.
+3. **UI:** none yet in P7b; the screens arrive with documents.
+
+Launcher (P7-7): `ModuleRegistry.discover()` plus `DevelopmentEntitlement`; a
+release-channel build refuses to start.
+
+### 11.5 Carried P4 tests, now possible
+- **Smuggling end to end:** an inventory module on the path but not entitled
+  resolves `READ_ONLY`, and both layers refuse its writes.
+- **Downgrade preserves data:** a company with inventory history opened by a
+  build without the module — the file's SHA-256 is unchanged by opening, the
+  module is `DORMANT`, the records stay readable.
+
+### 11.6 Not in P7b
+Stock movements from documents (P7c, which also needs posting and stock in one
+transaction) · UoM conversion · batches/expiry · valuation (P8) · screens.
+
