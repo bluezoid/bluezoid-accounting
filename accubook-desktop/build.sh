@@ -5,6 +5,7 @@
 #   ./build.sh --plan basic
 #   ./build.sh --plan professional --sign
 #   ./build.sh --plan basic --add-on taxation-returns
+#   ./build.sh --plan professional --release   # refuses to run until activation exists (P7-7)
 #
 # Produces a self-contained native installer with a bundled Java runtime, so a
 # customer never installs Java.
@@ -19,6 +20,10 @@
 set -euo pipefail
 
 PLAN="basic"
+# development | release. A release launcher refuses to start until licence
+# activation exists (P7-7), so a release build cannot ship on the development
+# entitlement.
+CHANNEL="development"
 DO_SIGN=false
 SKIP_TESTS=false
 ADD_ONS=()
@@ -28,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     --plan)        PLAN="$2"; shift 2 ;;
     --add-on)      ADD_ONS+=("$2"); shift 2 ;;
     --sign)        DO_SIGN=true; shift ;;
+    --release)     CHANNEL="release"; shift ;;
     --skip-tests)  SKIP_TESTS=true; shift ;;
     -h|--help)
       sed -n '2,22p' "$0"; exit 0 ;;
@@ -52,7 +58,7 @@ case "$(uname -s)" in
   *) echo "Unsupported OS: $(uname -s)" >&2; exit 1 ;;
 esac
 
-echo "==> AccuBook build: plan=${PLAN} os=${OS} sign=${DO_SIGN} add-ons=${ADD_ONS[*]:-none}"
+echo "==> AccuBook build: plan=${PLAN} channel=${CHANNEL} os=${OS} sign=${DO_SIGN} add-ons=${ADD_ONS[*]:-none}"
 
 # 1. Compile and test -----------------------------------------------------
 if [[ "$SKIP_TESTS" == true ]]; then
@@ -155,6 +161,7 @@ MANIFEST="$RUNTIME_DIR/accubook-build.json"
   echo "  \"application\": \"${APP_NAME}\","
   echo "  \"version\": \"${APP_VERSION}\","
   echo "  \"plan\": \"${PLAN}\","
+  echo "  \"channel\": \"${CHANNEL}\","
   echo "  \"builtAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
   echo "  \"os\": \"${OS}\","
   echo "  \"signed\": ${DO_SIGN},"
@@ -213,6 +220,7 @@ for TYPE in "${TYPES[@]}"; do
     # Point the driver at the bundled native so nothing is written to tmp.
     --java-options "-Dorg.sqlite.lib.path=\$ROOTDIR/lib/runtime/native"
     --java-options "-Dorg.sqlite.lib.name=${NATIVE_LIB}"
+    --java-options "-Daccubook.channel=${CHANNEL}"
   )
 
   # --- Signing: parameterised, so adding certificates is a credential swap ---
