@@ -1,8 +1,6 @@
 package com.accubook.accounting.chart;
 
 import com.accubook.persistence.connection.Database;
-import com.accubook.platform.money.MoneyMapper;
-import com.accubook.platform.money.Scale;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -237,83 +235,16 @@ public final class ChartOfAccounts {
     /**
      * The trial balance for one fiscal year (P6-3).
      *
-     * <p>Aggregated in SQL rather than in memory, and filtered on
-     * {@code is_posted = 1} alone.
-     *
-     * <p>That predicate matters more than it looks. {@code is_posted} is derived
-     * from {@code status} by a CHECK constraint, so it is the single correct
-     * test. Naming a status here instead - as this query once did with
-     * {@code status = 'APPROVED'} - couples the report to a vocabulary that can
-     * change, and when P5 changed it every balance would silently have become
-     * zero.
-     *
-     * <p>A REVERSED voucher is still posted and still counts. It and its contra
-     * sum to zero, which is precisely the arithmetic that makes a reversal
-     * honest; excluding it would leave the original's effect in the books
-     * unopposed.
-     *
-     * <p>{@code LEFT JOIN} throughout, so an account with no movement still
-     * appears - an account that exists but has not moved is information.
-     *
-     * <p>The year and posted filters sit in an {@code EXISTS} against the entry,
-     * not as extra conditions on a joined {@code voucher} row. Putting them on a
-     * second LEFT JOIN looks equivalent and is not: the entry join would still
-     * match every year, so the SUM would cover all of them while the filter
-     * merely nulled the voucher columns. Measured - it made a cross-year
-     * reversal cancel its own original.
+     * <p>Computed by {@link TrialBalanceQuery}, which is the only trial-balance
+     * query in the application - read-only callers such as the UI use it
+     * directly on a read connection.
      */
     public TrialBalance trialBalance(String fiscalYearId) {
-        String sql = """
-                SELECT l.id, l.name, g.nature, l.is_active,
-                       COALESCE(SUM(e.debit_amount_e4), 0)  AS debit_e4,
-                       COALESCE(SUM(e.credit_amount_e4), 0) AS credit_e4
-                FROM ledger l
-                JOIN ledger_group g ON g.id = l.group_id
-                LEFT JOIN voucher_entry e ON e.ledger_id = l.id
-                     AND EXISTS (SELECT 1 FROM voucher v
-                                 WHERE v.id = e.voucher_id
-                                   AND v.is_posted = 1
-                                   AND v.fiscal_year_id = ?)
-                GROUP BY l.id, l.name, g.nature, l.is_active
-                ORDER BY l.name
-                """;
-
-        List<TrialBalanceRow> rows = new ArrayList<>();
-        long totalDebitE4 = 0;
-        long totalCreditE4 = 0;
-
-        try (Connection connection = database.openReadConnection();
-             PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, fiscalYearId);
-            try (ResultSet result = ps.executeQuery()) {
-                while (result.next()) {
-                    long debitE4 = result.getLong("debit_e4");
-                    long creditE4 = result.getLong("credit_e4");
-
-                    // Net each account to a single side. A ledger showing both
-                    // columns has not been summarised, it has been transcribed.
-                    long netDebit = Math.max(0, debitE4 - creditE4);
-                    long netCredit = Math.max(0, creditE4 - debitE4);
-
-                    totalDebitE4 += netDebit;
-                    totalCreditE4 += netCredit;
-
-                    rows.add(new TrialBalanceRow(
-                            result.getString("id"),
-                            result.getString("name"),
-                            AccountNature.valueOf(result.getString("nature")),
-                            MoneyMapper.fromStored(netDebit, Scale.MONEY),
-                            MoneyMapper.fromStored(netCredit, Scale.MONEY),
-                            result.getInt("is_active") == 1));
-                }
-            }
+        try (Connection connection = database.openReadConnection()) {
+            return TrialBalanceQuery.compute(connection, fiscalYearId);
         } catch (SQLException e) {
             throw new ChartException("Could not compute the trial balance", e);
         }
-
-        return new TrialBalance(fiscalYearId, rows,
-                MoneyMapper.fromStored(totalDebitE4, Scale.MONEY),
-                MoneyMapper.fromStored(totalCreditE4, Scale.MONEY));
     }
 
     // ------------------------------------------------------------ helpers
