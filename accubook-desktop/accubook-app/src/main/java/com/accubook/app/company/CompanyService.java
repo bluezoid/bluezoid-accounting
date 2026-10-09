@@ -1,8 +1,12 @@
 package com.accubook.app.company;
 
+import com.accubook.app.entitlement.ModuleWriteAuthorization;
 import com.accubook.app.module.DatabaseModuleTransactions;
 import com.accubook.app.provisioning.CompanyProvisioning;
 import com.accubook.app.schema.Schemas;
+import com.accubook.module.ModuleRegistry;
+import com.accubook.module.ModuleState;
+import com.accubook.module.ModuleStateProvider;
 import com.accubook.module.ModuleTransactions;
 import com.accubook.persistence.connection.Database;
 import com.accubook.persistence.location.StorageLocationCheck;
@@ -46,14 +50,21 @@ public final class CompanyService implements AutoCloseable {
 
     private final ExclusiveLock installationLock;
 
+    /** Which module owns which table, and whether each module may write. */
+    private final ModuleRegistry modules;
+    private final ModuleStateProvider moduleStates;
+
     private Database openCompanyDatabase;
     private Company openCompany;
     private ExclusiveLock companyLock;
 
-    private CompanyService(AppPaths paths, Database appDatabase, ExclusiveLock installationLock) {
+    private CompanyService(AppPaths paths, Database appDatabase, ExclusiveLock installationLock,
+                           ModuleRegistry modules, ModuleStateProvider moduleStates) {
         this.paths = paths;
         this.appDatabase = appDatabase;
         this.installationLock = installationLock;
+        this.modules = java.util.Objects.requireNonNull(modules, "modules");
+        this.moduleStates = java.util.Objects.requireNonNull(moduleStates, "moduleStates");
         this.registry = new CompanyRegistry(appDatabase);
         this.companyMigrations = new MigrationRunner(Schemas.companyDatabase(), paths.backupsDir());
     }
@@ -67,8 +78,28 @@ public final class CompanyService implements AutoCloseable {
      * an implementation detail of this layer, not part of its contract.
      */
     public static CompanyService start(Path dataRoot) throws SQLException, IOException {
-        return start(AppPaths.at(dataRoot));
+        return start(AppPaths.at(dataRoot), NO_FEATURE_MODULES, KERNEL_ONLY);
     }
+
+    /**
+     * Open the installation with the feature modules this build contains and
+     * the entitlement that decides what each may do.
+     *
+     * <p>Supplied by the composition root. Every company opened through this
+     * service has the persistence guard installed from them, so a module that is
+     * not {@code ACTIVE} cannot write its tables by any route through here.
+     */
+    public static CompanyService start(Path dataRoot, ModuleRegistry modules,
+                                       ModuleStateProvider moduleStates) throws SQLException, IOException {
+        return start(AppPaths.at(dataRoot), modules, moduleStates);
+    }
+
+    /** A build with no feature modules: nothing is module-owned. */
+    private static final ModuleRegistry NO_FEATURE_MODULES = ModuleRegistry.discover(List.of());
+
+    /** Kernel modules write; anything else is absent. */
+    private static final ModuleStateProvider KERNEL_ONLY = moduleId ->
+            com.accubook.module.ModuleId.of(moduleId).isKernel() ? ModuleState.ACTIVE : ModuleState.ABSENT;
 
     /**
      * Open the installation at the platform's default location.
@@ -79,7 +110,14 @@ public final class CompanyService implements AutoCloseable {
      * books.
      */
     public static CompanyService startAtDefaultLocation() throws SQLException, IOException {
-        return start(AppPaths.forCurrentPlatform());
+        return start(AppPaths.forCurrentPlatform(), NO_FEATURE_MODULES, KERNEL_ONLY);
+    }
+
+    /** As {@link #startAtDefaultLocation()}, with the build's modules and entitlement. */
+    public static CompanyService startAtDefaultLocation(ModuleRegistry modules,
+                                                        ModuleStateProvider moduleStates)
+            throws SQLException, IOException {
+        return start(AppPaths.forCurrentPlatform(), modules, moduleStates);
     }
 
     /**
@@ -91,6 +129,11 @@ public final class CompanyService implements AutoCloseable {
      * archived) and must still migrate correctly whenever it appears.
      */
     static CompanyService start(AppPaths paths) throws SQLException, IOException {
+        return start(paths, NO_FEATURE_MODULES, KERNEL_ONLY);
+    }
+
+    static CompanyService start(AppPaths paths, ModuleRegistry modules,
+                                ModuleStateProvider moduleStates) throws SQLException, IOException {
         // Decision P2-3: refuse, do not warn. A network share or sync folder
         // will corrupt the database, so there is nothing useful to continue to.
         StorageLocationCheck.requireSupported(paths.root());
@@ -103,7 +146,7 @@ public final class CompanyService implements AutoCloseable {
         try {
             Database appDatabase = Database.open(paths.appDatabase());
             new MigrationRunner(Schemas.appDatabase(), paths.backupsDir()).migrate(appDatabase);
-            return new CompanyService(paths, appDatabase, lock);
+            return new CompanyService(paths, appDatabase, lock, modules, moduleStates);
         } catch (RuntimeException | SQLException e) {
             lock.close();
             throw e;
@@ -181,11 +224,31 @@ public final class CompanyService implements AutoCloseable {
 
         int version = companyMigrations.migrate(database).toVersion();
 
+        // Layer 2 of entitlement enforcement. Installed on every open, after
+        // migrations (which run unguarded) and before anything else can write.
+        // Database's own default is permit-all, so leaving this out would make
+        // the guard advisory in the running application.
+        database.authorizeWith(new ModuleWriteAuthorization(modules, moduleStates));
+
         this.openCompanyDatabase = database;
         this.openCompany = new Company(company.id(), company.name(), version,
                 company.createdAt(), Instant.now());
         registry.markOpened(id, version);
         return this.openCompany;
+    }
+
+    /**
+     * Guarded transactions on the open company - what a feature module's use
+     * cases are given. Writes pass the persistence guard; there is no route from
+     * here to an unguarded transaction.
+     */
+    public ModuleTransactions openCompanyTransactions() {
+        return new DatabaseModuleTransactions(companyDatabase());
+    }
+
+    /** The entitlement every module's state is read from. */
+    public ModuleStateProvider moduleStates() {
+        return moduleStates;
     }
 
     /**
