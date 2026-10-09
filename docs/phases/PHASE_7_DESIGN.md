@@ -94,6 +94,16 @@ CREATE TABLE party (
 - **Role change** after posting is refused when it would move the ledger across
   natures (P6 / R-3); Debtors and Creditors are both current, but ASSETS vs
   LIABILITIES is a nature change.
+- *Clarified during P7a:* P7-2 places a **new** `BOTH` party under Sundry
+  Debtors. A posted vendor that becomes `BOTH` keeps its ledger under Sundry
+  Creditors, because moving it would flip its history's sign. `BOTH` therefore
+  accepts either group; `CUSTOMER` and `VENDOR` accept only their own.
+- *Clarified during P7a:* the **ledger is the source of truth** for a party's
+  name and active flag; triggers mirror them onto `party`. The chart of
+  accounts refuses to move a party's ledger (change the role instead), and a
+  party's ledger cannot be deleted while the party exists.
+- Party and account names are unique **ignoring case**, so "CASH IN HAND" cannot
+  sit beside "Cash in Hand".
 
 ---
 
