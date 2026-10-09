@@ -37,13 +37,19 @@ public final class TableOwners {
             // app.db
             "company", "app_metadata");
 
-    private static final Map<String, ModuleId> FEATURE = Map.of(
-            "unit", ModuleId.of("inventory"),
-            "item_category", ModuleId.of("inventory"),
-            "item", ModuleId.of("inventory"),
-            "warehouse", ModuleId.of("inventory"),
-            "stock", ModuleId.of("inventory"),
-            "stock_movement", ModuleId.of("inventory"));
+    private static final Map<String, ModuleId> FEATURE = Map.ofEntries(
+            Map.entry("unit", ModuleId.of("inventory")),
+            Map.entry("item_category", ModuleId.of("inventory")),
+            Map.entry("item", ModuleId.of("inventory")),
+            Map.entry("warehouse", ModuleId.of("inventory")),
+            Map.entry("stock", ModuleId.of("inventory")),
+            Map.entry("stock_movement", ModuleId.of("inventory")),
+            Map.entry("sales_document", ModuleId.of("sales-invoicing")),
+            Map.entry("sales_document_line", ModuleId.of("sales-invoicing")),
+            Map.entry("sales_tax_line", ModuleId.of("sales-invoicing")),
+            Map.entry("purchase_document", ModuleId.of("purchase-billing")),
+            Map.entry("purchase_document_line", ModuleId.of("purchase-billing")),
+            Map.entry("purchase_tax_line", ModuleId.of("purchase-billing")));
 
     private TableOwners() {
     }

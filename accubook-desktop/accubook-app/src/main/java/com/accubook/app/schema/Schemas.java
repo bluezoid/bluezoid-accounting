@@ -59,7 +59,8 @@ public final class Schemas {
      */
     public static List<Migration> companyDatabase() {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
-                COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY);
+                COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
+                COMPANY_V6_DOCUMENTS);
     }
 
     /**
@@ -743,4 +744,163 @@ public final class Schemas {
                     'This item has stock movements; its kind and unit cannot change');
             END;
             """);
+
+    /**
+     * Phase 7c sales and purchase documents.
+     *
+     * <p>{@code sales_*} tables are owned by {@code sales-invoicing},
+     * {@code purchase_*} by {@code purchase-billing}. Both sides come from one
+     * template, so their immutability rules cannot drift apart.
+     *
+     * <p>Also seeds the two system ledgers documents post to - Sales under
+     * Sales Accounts, Purchases under Direct Expenses (periodic 5a) - for
+     * companies that already exist. A new company is migrated before it is
+     * provisioned, so for it this finds no groups and provisioning seeds them.
+     * Both modules are in every plan, so P2-1 permits seeding.
+     */
+    private static final Migration COMPANY_V6_DOCUMENTS = new Migration(6, "sales and purchase documents",
+            documentTables("sales", "'SALES_INVOICE', 'CREDIT_NOTE'", "'CREDIT_NOTE'", "")
+                    + documentTables("purchase", "'PURCHASE_BILL', 'DEBIT_NOTE'", "'DEBIT_NOTE'",
+                    "supplier_document_no TEXT,")
+                    + seedSystemLedger("SALES", "Sales", "SALES_ACCOUNTS")
+                    + seedSystemLedger("PURCHASES", "Purchases", "DIRECT_EXPENSES"));
+
+    /**
+     * One side's document tables.
+     *
+     * <p>A document is editable only while DRAFT. Posting gives it a number
+     * (P7-8), a voucher and its stock movements; from then it is a statutory
+     * record that only changes by being CANCELLED, which keeps its number and
+     * records the reversal (P7-12). A note must reference the document it
+     * corrects (P7-11).
+     */
+    private static String documentTables(String side, String kinds, String noteKind, String extraColumns) {
+        return """
+            CREATE TABLE %1$s_document (
+                id                      TEXT    NOT NULL PRIMARY KEY,
+                kind                    TEXT    NOT NULL CHECK (kind IN (%2$s)),
+                -- P7-8: null until posted, so an abandoned draft leaves no gap.
+                number                  TEXT UNIQUE,
+                party_id                TEXT    NOT NULL REFERENCES party (id),
+                document_date           TEXT    NOT NULL,
+                due_date                TEXT,
+                status                  TEXT    NOT NULL DEFAULT 'DRAFT'
+                    CHECK (status IN ('DRAFT', 'POSTED', 'CANCELLED')),
+                original_document_id    TEXT REFERENCES %1$s_document (id),
+                %4$s
+                round_off_enabled       INTEGER NOT NULL DEFAULT 1 CHECK (round_off_enabled IN (0, 1)),
+                -- Derived from the lines, never accepted from a caller.
+                amount_e4               INTEGER NOT NULL DEFAULT 0 CHECK (amount_e4 >= 0),
+                round_off_e4            INTEGER NOT NULL DEFAULT 0,
+                total_e4                INTEGER NOT NULL DEFAULT 0 CHECK (total_e4 >= 0),
+                fiscal_year_id          TEXT REFERENCES fiscal_year (id),
+                voucher_id              TEXT REFERENCES voucher (id),
+                cancellation_voucher_id TEXT REFERENCES voucher (id),
+                cancellation_reason     TEXT,
+                narration               TEXT,
+                created_at              INTEGER NOT NULL,
+                updated_at              INTEGER NOT NULL,
+                CHECK (total_e4 = amount_e4 + round_off_e4),
+                CHECK ((status = 'DRAFT') = (number IS NULL)),
+                CHECK (status = 'DRAFT' OR (voucher_id IS NOT NULL AND fiscal_year_id IS NOT NULL
+                                            AND total_e4 > 0)),
+                CHECK ((status = 'CANCELLED') = (cancellation_voucher_id IS NOT NULL)),
+                CHECK ((kind = %3$s) = (original_document_id IS NOT NULL)),
+                CHECK (original_document_id IS NULL OR original_document_id <> id)
+            ) STRICT;
+
+            CREATE INDEX idx_%1$s_document_party ON %1$s_document (party_id, document_date);
+            CREATE INDEX idx_%1$s_document_original ON %1$s_document (original_document_id);
+
+            CREATE TABLE %1$s_document_line (
+                id            TEXT    NOT NULL PRIMARY KEY,
+                document_id   TEXT    NOT NULL REFERENCES %1$s_document (id) ON DELETE CASCADE,
+                sequence      INTEGER NOT NULL,
+                -- Null for a free-text line; a build without inventory has only those.
+                item_id       TEXT REFERENCES item (id),
+                description   TEXT    NOT NULL,
+                quantity_e4   INTEGER NOT NULL CHECK (quantity_e4 > 0),
+                rate_e4       INTEGER NOT NULL CHECK (rate_e4 >= 0),
+                discount_bp   INTEGER NOT NULL DEFAULT 0 CHECK (discount_bp BETWEEN 0 AND 10000),
+                -- P7-9: quantity x rate - discount, rounded to paise half-up.
+                amount_e4     INTEGER NOT NULL CHECK (amount_e4 >= 0 AND amount_e4 %% 100 = 0),
+                warehouse_id  TEXT REFERENCES warehouse (id),
+                CHECK (warehouse_id IS NULL OR item_id IS NOT NULL),
+                UNIQUE (document_id, sequence)
+            ) STRICT;
+
+            -- P7-1: GST arrives in P9. The table exists so P9 is a fill, not a reshape.
+            CREATE TABLE %1$s_tax_line (
+                id          TEXT    NOT NULL PRIMARY KEY,
+                line_id     TEXT    NOT NULL REFERENCES %1$s_document_line (id) ON DELETE CASCADE,
+                component   TEXT    NOT NULL,
+                rate_bp     INTEGER NOT NULL CHECK (rate_bp >= 0),
+                amount_e4   INTEGER NOT NULL CHECK (amount_e4 >= 0)
+            ) STRICT;
+
+            -- Once posted, a document is a statutory record. The only change
+            -- allowed is POSTED -> CANCELLED, recording the reversal and reason.
+            CREATE TRIGGER %1$s_document_posted_immutable
+            BEFORE UPDATE ON %1$s_document
+            WHEN OLD.status <> 'DRAFT'
+             AND NOT (OLD.status = 'POSTED' AND NEW.status = 'CANCELLED'
+                      AND NEW.number = OLD.number AND NEW.kind = OLD.kind
+                      AND NEW.party_id = OLD.party_id AND NEW.document_date = OLD.document_date
+                      AND NEW.total_e4 = OLD.total_e4 AND NEW.voucher_id = OLD.voucher_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'A posted document cannot be changed; cancel it instead');
+            END;
+
+            CREATE TRIGGER %1$s_document_posted_no_delete
+            BEFORE DELETE ON %1$s_document
+            WHEN OLD.status <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'A posted document cannot be deleted; cancel it instead');
+            END;
+
+            CREATE TRIGGER %1$s_line_insert_only_in_draft
+            BEFORE INSERT ON %1$s_document_line
+            WHEN (SELECT status FROM %1$s_document WHERE id = NEW.document_id) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'Lines of a posted document cannot be changed');
+            END;
+
+            CREATE TRIGGER %1$s_line_update_only_in_draft
+            BEFORE UPDATE ON %1$s_document_line
+            WHEN (SELECT status FROM %1$s_document WHERE id = OLD.document_id) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'Lines of a posted document cannot be changed');
+            END;
+
+            CREATE TRIGGER %1$s_line_delete_only_in_draft
+            BEFORE DELETE ON %1$s_document_line
+            WHEN (SELECT status FROM %1$s_document WHERE id = OLD.document_id) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'Lines of a posted document cannot be changed');
+            END;
+
+            """.formatted(side, kinds, noteKind, extraColumns);
+    }
+
+    /**
+     * Seed a system ledger into an existing company, if its group exists and the
+     * ledger does not. Falls back to a second name if a user ledger already has
+     * the first, rather than failing the migration and locking the company out.
+     */
+    private static String seedSystemLedger(String code, String name, String groupCode) {
+        return """
+            INSERT INTO ledger (id, group_id, system_code, name, is_system, created_at, updated_at)
+            SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2)
+                         || '-' || substr('89ab', 1 + (abs(random()) %% 4), 1) || substr(hex(randomblob(2)), 2)
+                         || '-' || hex(randomblob(6))),
+                   g.id, '%1$s',
+                   CASE WHEN EXISTS (SELECT 1 FROM ledger WHERE lower(name) = lower('%2$s'))
+                        THEN '%2$s (AccuBook)' ELSE '%2$s' END,
+                   1, CAST(strftime('%%s', 'now') AS INTEGER) * 1000, CAST(strftime('%%s', 'now') AS INTEGER) * 1000
+            FROM ledger_group g
+            WHERE g.system_code = '%3$s'
+              AND NOT EXISTS (SELECT 1 FROM ledger WHERE system_code = '%1$s');
+
+            """.formatted(code, name, groupCode);
+    }
 }
