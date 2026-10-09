@@ -1,6 +1,6 @@
 # Phase 7 Report — Parties, Inventory Masters, Sales & Purchase Documents
 
-**Status:** IN PROGRESS — P7a ✅ · P6-4 screen ✅ · **P7b ✅** · P7c–P7e not started
+**Status:** IN PROGRESS — P7a ✅ · P6-4 screen ✅ · P7b ✅ · **P7c ✅** · P7d–P7e not started
 **Design:** `PHASE_7_DESIGN.md` (decisions P7-1…P7-6 approved 2026-10-09)
 
 ---
@@ -188,4 +188,60 @@ The PRO→BASIC→PRO test fails without the fix.
   are tested directly.
 - No inventory screens; no default warehouse or units are seeded (UX for P7c).
 - Movement dates are not checked against fiscal years or closed periods (P11).
+
+---
+
+## P7c — Sales and purchase documents ✅ (2026-10-09)
+
+**Tests:** **567 passing · 0 failing · 0 skipped** with UI on Xvfb · `BUILD SUCCESS`
+**Before P7c:** 501 (+66)
+
+**Exit criterion met in part:** a credit note **reduces** revenue and
+receivables — asserted as a property over random amounts and end to end.
+"Invoice → receipt → statement reconciles" needs receipts: P7d.
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| Inactive/unknown accounts refused for new postings (P6 §5.2, never implemented) | `VoucherWriter` |
+| `TransactionalPosting` — post/reverse inside the caller's transaction, no `Database` needed; `PostingService` delegates | `accubook-accounting` |
+| `StockPort` service interface; inventory provides it | `module-api`, `accubook-inventory` |
+| Migration 6: `sales_*`, `purchase_*` documents, lines, tax lines (empty, P7-1); Sales and Purchases system ledgers seeded for existing companies | `Schemas` |
+| Provisioning seeds Sales and Purchases for new companies | `CompanyProvisioning` |
+| **`accubook-trade`** library: `DocumentKind`, `LineMath`, `RoundOff`, `DocumentNumbers`, `PostingPlan`, `DocumentEngine` | new module |
+| **`accubook-sales-invoicing`**, **`accubook-purchase-billing`** feature modules | new modules |
+
+### Reference defects recorded
+R-9 invoice series from today's date with April hard-coded · **R-10 invoice
+numbers are 17 characters, Rule 46(b) allows 16** · R-11 unrounded line amounts.
+
+### Defects found in our own code
+- **Posting to an inactive account was allowed** — designed in P6, never built.
+  A deactivated customer could still be invoiced. Fixed; reversals stay allowed.
+- Three P6 tests pinned "4 seeded ledgers"; now relative to the chart.
+
+### Verification that the tests can fail
+| Mutation | Caught by |
+|---|---|
+| credit note posts like an invoice (the reference's D-23) | `DocumentKindTest`, two property tests |
+| note limit removed | `DocumentEngineIT$CreditNotes.limited` |
+
+### Packaged artifacts
+| Plan | Image | Discovered | Stock port |
+|---|---|---|:--:|
+| basic | trade, sales-invoicing, purchase-billing | `[purchase-billing, sales-invoicing]` | ✗ — free-text lines only |
+| professional | + inventory | `[inventory, purchase-billing, sales-invoicing]` | ✓ |
+
+### Risks / not done
+- **No screens** for parties, items or documents.
+- **Kernel services still need a `Database`** (`Parties`, `ChartOfAccounts`), which
+  only `CompanyService` holds. Tests use a second handle on the file. Before the
+  document UI, these must be reachable from the shell the way posting now is
+  (`TransactionalPosting`) — a composition task for the UI work.
+- No GST (P7-1, P9) and no TDS (P9).
+- Credit notes are limited by **amount**, not by quantity per line: a note may
+  return more units of an item than the invoice sold, as long as the value fits.
+  Recommend a per-item quantity check in P7d or P8 (record as a decision then).
+- A document date in a closed year is refused, but nothing closes years until P11.
 
