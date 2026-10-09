@@ -59,7 +59,7 @@ public final class Schemas {
      */
     public static List<Migration> companyDatabase() {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
-                COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES);
+                COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY);
     }
 
     /**
@@ -596,6 +596,151 @@ public final class Schemas {
             BEGIN
                 SELECT RAISE(ABORT, 'This ledger belongs to a party; delete the party instead')
                 WHERE EXISTS (SELECT 1 FROM party WHERE ledger_id = OLD.id);
+            END;
+            """);
+
+    /**
+     * Phase 7b inventory - quantities only (B-1: periodic 5a).
+     *
+     * <p>Owned by the {@code inventory} module, and created in every build
+     * (universal schema, ADR-002): a BASIC build has the tables, empty, and a
+     * downgraded customer keeps their history in them.
+     *
+     * <p>No value is kept. Valuation is P8, from persisted cost layers (A-1);
+     * {@code unit_cost_e4} records what a source document said a unit cost so
+     * P8 has its input, and nothing in P7 reads it.
+     *
+     * <p>Names are unique ignoring case ({@code COLLATE NOCASE}): two items
+     * called "Rice" and "RICE" are one item a user cannot tell apart in a picker.
+     */
+    private static final Migration COMPANY_V5_INVENTORY = new Migration(5, "inventory", """
+            CREATE TABLE unit (
+                id          TEXT    NOT NULL PRIMARY KEY,
+                symbol      TEXT    NOT NULL COLLATE NOCASE UNIQUE,
+                name        TEXT    NOT NULL,
+                -- How many decimal places a quantity in this unit may carry:
+                -- 0 for pieces, 3 for kilograms. At most the storage scale.
+                decimals    INTEGER NOT NULL DEFAULT 0 CHECK (decimals BETWEEN 0 AND 4),
+                created_at  INTEGER NOT NULL,
+                updated_at  INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE TABLE item_category (
+                id          TEXT    NOT NULL PRIMARY KEY,
+                parent_id   TEXT REFERENCES item_category (id),
+                name        TEXT    NOT NULL COLLATE NOCASE UNIQUE,
+                created_at  INTEGER NOT NULL,
+                updated_at  INTEGER NOT NULL,
+                CHECK (parent_id IS NULL OR parent_id <> id)
+            ) STRICT;
+
+            CREATE TABLE item (
+                id           TEXT    NOT NULL PRIMARY KEY,
+                category_id  TEXT REFERENCES item_category (id),
+                unit_id      TEXT    NOT NULL REFERENCES unit (id),
+                name         TEXT    NOT NULL COLLATE NOCASE UNIQUE,
+                sku          TEXT COLLATE NOCASE UNIQUE,
+                kind         TEXT    NOT NULL CHECK (kind IN ('GOODS', 'SERVICE')),
+                -- HSN for goods, SAC for services. Stored now; drives GST in P9.
+                hsn_sac      TEXT,
+                description  TEXT,
+                is_active    INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                created_at   INTEGER NOT NULL,
+                updated_at   INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE INDEX idx_item_category ON item (category_id);
+
+            CREATE TABLE warehouse (
+                id          TEXT    NOT NULL PRIMARY KEY,
+                name        TEXT    NOT NULL COLLATE NOCASE UNIQUE,
+                address     TEXT,
+                is_active   INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                created_at  INTEGER NOT NULL,
+                updated_at  INTEGER NOT NULL
+            ) STRICT;
+
+            -- Quantity on hand per item and warehouse: a cache of the movement
+            -- log, kept so a sale has a row to decrement under a guard. P7-4:
+            -- stock never goes negative, enforced here as well as by the
+            -- guarded UPDATE, so no code path can get round it.
+            CREATE TABLE stock (
+                item_id      TEXT    NOT NULL REFERENCES item (id),
+                warehouse_id TEXT    NOT NULL REFERENCES warehouse (id),
+                quantity_e4  INTEGER NOT NULL CHECK (quantity_e4 >= 0),
+                updated_at   INTEGER NOT NULL,
+                PRIMARY KEY (item_id, warehouse_id)
+            ) STRICT;
+
+            CREATE TABLE stock_movement (
+                id                TEXT    NOT NULL PRIMARY KEY,
+                item_id           TEXT    NOT NULL REFERENCES item (id),
+                movement_type     TEXT    NOT NULL CHECK (movement_type IN (
+                    'OPENING', 'PURCHASE', 'SALES_RETURN', 'ADJUSTMENT_IN',
+                    'SALE', 'PURCHASE_RETURN', 'ADJUSTMENT_OUT', 'TRANSFER')),
+                from_warehouse_id TEXT REFERENCES warehouse (id),
+                to_warehouse_id   TEXT REFERENCES warehouse (id),
+                quantity_e4       INTEGER NOT NULL CHECK (quantity_e4 > 0),
+                unit_cost_e4      INTEGER CHECK (unit_cost_e4 IS NULL OR unit_cost_e4 >= 0),
+                movement_date     TEXT    NOT NULL,
+                -- The document that caused it, e.g. ('SALES_INVOICE', id). Null
+                -- for a manual adjustment or opening stock.
+                source_type       TEXT,
+                source_id         TEXT,
+                narration         TEXT,
+                created_at        INTEGER NOT NULL,
+                -- Direction is a property of the type. The reference validated
+                -- it only in a route, and a SALE carrying a destination
+                -- warehouse once increased stock.
+                CHECK (
+                    (movement_type IN ('OPENING', 'PURCHASE', 'SALES_RETURN', 'ADJUSTMENT_IN')
+                        AND from_warehouse_id IS NULL AND to_warehouse_id IS NOT NULL)
+                 OR (movement_type IN ('SALE', 'PURCHASE_RETURN', 'ADJUSTMENT_OUT')
+                        AND from_warehouse_id IS NOT NULL AND to_warehouse_id IS NULL)
+                 OR (movement_type = 'TRANSFER'
+                        AND from_warehouse_id IS NOT NULL AND to_warehouse_id IS NOT NULL
+                        AND from_warehouse_id <> to_warehouse_id)),
+                CHECK ((source_type IS NULL) = (source_id IS NULL))
+            ) STRICT;
+
+            CREATE INDEX idx_stock_movement_item ON stock_movement (item_id, movement_date);
+            CREATE INDEX idx_stock_movement_source ON stock_movement (source_type, source_id);
+
+            -- The movement log is the record; stock is derived from it. A
+            -- movement is corrected by an opposite movement, never edited.
+            CREATE TRIGGER stock_movement_no_update BEFORE UPDATE ON stock_movement
+            BEGIN
+                SELECT RAISE(ABORT, 'A stock movement cannot be changed; record an opposite movement');
+            END;
+
+            CREATE TRIGGER stock_movement_no_delete BEFORE DELETE ON stock_movement
+            BEGIN
+                SELECT RAISE(ABORT, 'A stock movement cannot be deleted; record an opposite movement');
+            END;
+
+            -- A service has no stock. Refused by the database so a document
+            -- line for a service can never move inventory.
+            CREATE TRIGGER stock_movement_goods_only BEFORE INSERT ON stock_movement
+            WHEN (SELECT kind FROM item WHERE id = NEW.item_id) = 'SERVICE'
+            BEGIN
+                SELECT RAISE(ABORT, 'A service item has no stock');
+            END;
+
+            CREATE TRIGGER stock_goods_only BEFORE INSERT ON stock
+            WHEN (SELECT kind FROM item WHERE id = NEW.item_id) = 'SERVICE'
+            BEGIN
+                SELECT RAISE(ABORT, 'A service item has no stock');
+            END;
+
+            -- An item with movements keeps its kind and unit: changing either
+            -- would reinterpret every quantity already recorded.
+            CREATE TRIGGER item_kind_unit_fixed_once_moved
+            BEFORE UPDATE OF kind, unit_id ON item
+            WHEN (NEW.kind IS NOT OLD.kind OR NEW.unit_id IS NOT OLD.unit_id)
+             AND EXISTS (SELECT 1 FROM stock_movement WHERE item_id = OLD.id)
+            BEGIN
+                SELECT RAISE(ABORT,
+                    'This item has stock movements; its kind and unit cannot change');
             END;
             """);
 }
