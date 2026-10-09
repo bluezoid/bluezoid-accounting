@@ -55,13 +55,13 @@ optional module exists; **P7b must wire it in the composition root**.
 | R-7 | `amountPaid`/`amountDue` cached and recomputed by hand. → P7d |
 | R-8 | `BOTH` parties silently treated as customers. → fixed by P7-2 |
 
-### Tests added (+58)
+### Tests added (+58, per suite measured against the baseline commit)
 
 | Suite | Count |
 |---|--:|
-| `GuardedStatementsTest` (comments, CTEs, forbidden statements) | +21 |
+| `GuardedStatementsTest` (comments, CTEs, forbidden statements) | +22 |
 | `WriteGuardTest` (bypass attempts end to end) | +5 |
-| `MoneyMapperTest` (quantity) | +1 |
+| `MoneyMapperTest` (quantity test, plus an existing per-`Scale` test now covering `QUANTITY`) | +2 |
 | `DatabaseModuleTransactionsTest` | 5 |
 | `PartyRoleTest` | 5 |
 | `PartiesIT` | 19 |
