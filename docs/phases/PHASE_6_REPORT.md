@@ -235,3 +235,14 @@ Checked **inside the linked runtime image**:
 | B-1 still open | before P7/P8 |
 
 **No decision belonging to B-1, B-2, B-4 or B-5 was made.**
+
+---
+
+## Addendum 2026-10-09 — P6-4 deviation closed
+
+The deferred trial-balance screen was built once UI tests could run (Xvfb). See
+`OPEN_DECISIONS.md` P6-4-UI and `PHASE_7_REPORT.md`. Two related defects were
+found on the way: the UI tests had never run (Monocle forced even on a display),
+and `CompanyService.ledgerBalances` repeated the §3.1 join defect for draft
+vouchers. Both fixed.
+
