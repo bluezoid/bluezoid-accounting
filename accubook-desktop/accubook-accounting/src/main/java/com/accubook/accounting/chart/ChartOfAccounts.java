@@ -95,6 +95,13 @@ public final class ChartOfAccounts {
      */
     public void moveToGroup(String ledgerId, String targetGroupId, long now) {
         execute(connection -> {
+            if (countWhere(connection, "SELECT COUNT(*) FROM party WHERE ledger_id = ?", ledgerId) > 0) {
+                // Where a party's ledger lives follows from the party's role.
+                // Moving it here would let the two disagree.
+                throw new ChartException(
+                        "This account belongs to a party. Change the party's role instead of "
+                                + "moving its account.");
+            }
             AccountNature current = natureOfLedger(connection, ledgerId);
             AccountNature target = natureOfGroup(connection, targetGroupId);
             if (current != target && hasPostings(connection, ledgerId)) {
