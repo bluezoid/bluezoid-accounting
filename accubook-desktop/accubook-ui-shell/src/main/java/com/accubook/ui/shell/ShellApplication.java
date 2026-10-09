@@ -1,5 +1,8 @@
 package com.accubook.ui.shell;
 
+import com.accubook.accounting.chart.FiscalYear;
+import com.accubook.accounting.chart.TrialBalance;
+import com.accubook.accounting.chart.TrialBalanceQuery;
 import com.accubook.app.company.Company;
 import com.accubook.app.company.CompanyService;
 import javafx.application.Application;
@@ -16,6 +19,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -155,24 +159,36 @@ public final class ShellApplication extends Application {
     }
 
     /**
-     * Show the trial balance for the open company.
+     * Open the trial balance for the open company (P6-4).
      *
-     * <p>Phase 2 has no data-entry UI - posting arrives in Phase 5 - so the
-     * shell reads rather than writes. Displaying the trial-balance totals is the
-     * most useful thing it can do with a core schema, and it exercises the
-     * computed-balance path (decision P2-2) end to end.
+     * <p>A window of its own, so it can stay open beside the shell. It reads
+     * through {@link CompanyService#readOpenCompany}, which hands out a
+     * connection that cannot write - the screen is read-only by construction,
+     * not by the absence of buttons.
      */
     private void showTrialBalance() {
         if (companyService == null || companyService.currentCompany().isEmpty()) {
             status("Open a company first.");
             return;
         }
-        runAsync("Computing trial balance", () -> companyService.trialBalanceTotals(), totals -> {
-            totalLabel.setText("Trial balance - debits: " + totals.totalDebits().toPlainString()
-                    + "  credits: " + totals.totalCredits().toPlainString()
-                    + (totals.balanced() ? "  (balanced)" : "  (OUT OF BALANCE)"));
-            status("Trial balance computed.");
-        });
+        String companyName = companyService.currentCompany().get().name();
+        TrialBalanceView view = new TrialBalanceView(new TrialBalanceView.Source() {
+            @Override
+            public List<FiscalYear> fiscalYears() throws Exception {
+                return companyService.readOpenCompany(TrialBalanceQuery::fiscalYears);
+            }
+
+            @Override
+            public TrialBalance trialBalance(String fiscalYearId) throws Exception {
+                return companyService.readOpenCompany(
+                        connection -> TrialBalanceQuery.compute(connection, fiscalYearId));
+            }
+        }, LocalDate.now());
+        Stage window = new Stage();
+        window.setTitle("Trial balance - " + companyName);
+        window.setScene(new Scene(view, 760, 560));
+        window.show();
+        status("Trial balance opened.");
     }
 
     private void showCompanies(List<Company> companies) {
