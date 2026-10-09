@@ -569,6 +569,26 @@ public final class Schemas {
                 SELECT RAISE(ABORT, 'A party cannot be moved to a different ledger');
             END;
 
+            -- The ledger is the source of truth for a party's name and active
+            -- flag. The chart of accounts may rename or deactivate any ledger,
+            -- so the party mirrors it rather than holding a second copy that
+            -- could disagree.
+            CREATE TRIGGER party_follows_ledger_name
+            AFTER UPDATE OF name ON ledger
+            WHEN NEW.name IS NOT OLD.name
+            BEGIN
+                UPDATE party SET name = NEW.name, updated_at = NEW.updated_at
+                WHERE ledger_id = NEW.id;
+            END;
+
+            CREATE TRIGGER party_follows_ledger_active
+            AFTER UPDATE OF is_active ON ledger
+            WHEN NEW.is_active IS NOT OLD.is_active
+            BEGIN
+                UPDATE party SET is_active = NEW.is_active, updated_at = NEW.updated_at
+                WHERE ledger_id = NEW.id;
+            END;
+
             -- The foreign key would refuse this too, but P2 measured that
             -- foreign_keys is per connection; a trigger does not depend on it.
             CREATE TRIGGER ledger_no_delete_with_party
