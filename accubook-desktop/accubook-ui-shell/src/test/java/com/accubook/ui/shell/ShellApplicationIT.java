@@ -72,7 +72,7 @@ class ShellApplicationIT extends ApplicationTest {
     void launches() {
         assertThat(lookup("#companyList").tryQuery()).isPresent();
         assertThat(lookup("#createCompanyButton").tryQuery()).isPresent();
-        assertThat(lookup("#recordAmountButton").tryQuery()).isPresent();
+        assertThat(lookup("#trialBalanceButton").tryQuery()).isPresent();
     }
 
     @Test
