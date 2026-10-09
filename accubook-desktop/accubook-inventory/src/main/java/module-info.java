@@ -17,4 +17,5 @@ module accubook.inventory {
     exports com.accubook.inventory;
 
     provides com.accubook.module.FeatureModule with com.accubook.inventory.InventoryModule;
+    provides com.accubook.module.stock.StockPort with com.accubook.inventory.InventoryStockPort;
 }
