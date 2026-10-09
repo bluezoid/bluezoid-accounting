@@ -19,6 +19,7 @@
     <module>accubook-licensing</module>
     <module>accubook-accounting</module>
     <module>accubook-app</module>
+    <module>accubook-inventory</module>
     <module>accubook-ui-shell</module>
     <module>accubook-launcher</module>
   </modules>
@@ -69,6 +70,11 @@
       <dependency>
         <groupId>com.accubook</groupId>
         <artifactId>accubook-accounting</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.accubook</groupId>
+        <artifactId>accubook-inventory</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
