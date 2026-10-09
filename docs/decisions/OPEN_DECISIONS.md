@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-7, P6-4-UI (2026-10-09).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09).
 
 **Still open:** B-2 · B-4 · B-5 · I-1…I-3, I-6…I-18 · N-2…N-9.
 
@@ -310,6 +310,22 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P7-5 Stock coupling:** posting an invoice/bill moves stock in the same
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
+
+## P7-8…P7-12 · P7c document rules — ✅ **APPROVED 2026-10-09**
+
+> All as recommended in `PHASE_7_DESIGN.md` §12.6.
+>
+> - **P7-8 Numbering:** allocated at posting; one series per kind per fiscal
+>   year of the document date; `INV/26-27/00001` (15 chars, Rule 46(b) ≤ 16);
+>   prefixes INV, CN, PB, DN; supplier's bill number stored separately.
+> - **P7-9 Line rounding:** each line amount to paise, half-up; total = exact
+>   sum of rounded lines.
+> - **P7-10 Total round-off:** to the nearest rupee, difference to Round Off,
+>   on by default, per-document switch.
+> - **P7-11 Notes:** must reference a posted document of the same party; total
+>   may not exceed the un-credited remainder.
+> - **P7-12 Cancellation:** only while nothing is allocated and no note
+>   references it; reversal voucher + stock restored; number stays used.
 
 ## P7-7 · Licence state before activation exists — ✅ **APPROVED 2026-10-09**
 

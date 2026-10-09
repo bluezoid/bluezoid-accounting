@@ -290,7 +290,7 @@ transaction) · UoM conversion · batches/expiry · valuation (P8) · screens.
 
 ## 12. P7c detailed design — sales and purchase documents
 
-**Status:** DESIGN — awaiting P7-8…P7-12.
+**Status:** APPROVED 2026-10-09 (P7-8…P7-12 as recommended).
 
 ### 12.1 Reference research
 
