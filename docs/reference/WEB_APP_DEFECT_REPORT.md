@@ -24,6 +24,7 @@ during ordinary, everyday use.
 | **D-25** | Manufacturing **double-counts** inventory on the balance sheet | 🔴 Critical | Every manufacturing customer |
 | **D-24** | Historical inventory valuation is not date-correct | 🔴 Critical | Comparatives, prior-period reports |
 | **D-22** | Tally import bypasses the posting invariant | 🟠 High | Every new customer onboarding |
+| **R-5** | Party ledger bound by **display name** — a party can attach to an unrelated ledger | 🟠 High | Any party named like an existing ledger *(added 2026-10-09)* |
 
 These were found by code reading, not by running the application. Each includes
 the evidence so your team can verify independently before acting.
@@ -205,3 +206,34 @@ though no NIC call is made.
   posting path is unambiguous.
 - **No changes were made to the repository.** Verification and remediation are
   entirely your team's call.
+
+---
+
+## R-5 — A party's ledger is found by display name 🟠 *(added 2026-10-09)*
+
+### What happens
+When a party first posts, its ledger is created **or found by name**. If any
+ledger already has that name — "Cash in Hand", "Sales", "Round Off", another
+party — the party is silently attached to **that** ledger. A customer named
+like the cash ledger posts its receivables into cash; two parties sharing a
+name share one ledger and one balance.
+
+### Evidence
+`src/backend/utils/posting.ts:46-70`, `upsertLedgerByName`:
+
+```sql
+INSERT INTO "ledgers" (...) VALUES (...)
+ON CONFLICT ("organizationId", "name")
+  DO UPDATE SET "name" = EXCLUDED."name"
+RETURNING "id"
+```
+
+`RETURNING` yields the **existing** row on conflict, whatever its group or
+`partyId`. Called by `getOrCreatePartyLedger` (`posting.ts:85`), which only
+checks `partyId` first — so a new party with a colliding name falls through to
+the upsert and receives the other ledger's id.
+
+### Suggested check
+Create a customer named exactly like an existing ledger, post an invoice, and
+inspect which ledger the voucher debits.
+
