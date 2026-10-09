@@ -1,6 +1,6 @@
 # Phase 7 Report — Parties, Inventory Masters, Sales & Purchase Documents
 
-**Status:** IN PROGRESS — P7a ✅ complete · P6-4 screen ✅ closed · P7b–P7e not started
+**Status:** IN PROGRESS — P7a ✅ · P6-4 screen ✅ · **P7b ✅** · P7c–P7e not started
 **Design:** `PHASE_7_DESIGN.md` (decisions P7-1…P7-6 approved 2026-10-09)
 
 ---
@@ -113,4 +113,79 @@ started under Xvfb against a fresh data directory with no exception and created
 - The end-to-end UI test grants the test JVM `--add-reads
   accubook.ui.shell=accubook.persistence` to seed data; the shell module itself
   does not read persistence.
+
+---
+
+## P7b — Inventory module, enforcement in production ✅ (2026-10-09)
+
+**Tests:** **501 passing · 0 failing · 0 skipped** with UI tests on Xvfb ·
+default build 492 passing, 9 UI skipped · `BUILD SUCCESS`
+**Before P7b:** 446 (+46 non-UI)
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| Guard installed on **every company CompanyService opens**, from a module registry + state provider supplied by the composition root | `CompanyService` |
+| `openCompanyTransactions()` — the guarded port feature use cases get | `CompanyService` |
+| Launcher: `ModuleRegistry.discover()` + `DevelopmentEntitlement`; **release channel refuses to start** (P7-7) | `accubook-launcher` |
+| `build.sh --release` — channel baked into the installer and the manifest | `build.sh` |
+| Migration 5: `unit`, `item_category`, `item`, `warehouse`, `stock`, `stock_movement` | `Schemas` |
+| **`accubook-inventory`** — first optional module; requires only `module-api` + `platform` | new Maven/JPMS module |
+| `Inventory` use cases + `StockWriter` (applies a movement in a caller's transaction, for P7c) | `accubook-inventory` |
+| `TableOwners` — ownership of every shipped table, independent of what is installed | `accubook-app` |
+| `HistoricalView.Kind.QUANTITY` | `accubook-module-api` |
+
+### Enforced by the schema itself
+Stock never negative (CHECK) · movement direction per type (CHECK) · movement
+log append-only · services have no stock · an item's kind and unit fixed once it
+has moved · names unique ignoring case.
+
+### Defect found in our own design — absent modules' tables were writable
+
+Ownership came only from **installed** modules. The schema is universal, so a
+BASIC build has the inventory tables but not the module: they had no owner, the
+guard treated them as kernel, and anything could write them. Fixed with
+`TableOwners`, consulted first; kernel tables can no longer be gated by a module
+claiming one; a test asserts every migrated table is classified exactly once.
+The PRO→BASIC→PRO test fails without the fix.
+
+### Carried P4 tests — done
+- **Smuggling:** inventory discovered, real BASIC `Entitlement` → `READ_ONLY`,
+  refused at use case and guard.
+- **Downgrade:** history readable and unwritable without the module; the company
+  file's **SHA-256 is unchanged** by opening it in the smaller build; PRO again
+  finds it intact and writable.
+
+### Verification that the tests can fail
+| Mutation | Result |
+|---|---|
+| guard not installed on open | 2 of 3 enforcement tests fail |
+| decrement guard removed | message test fails; schema CHECK still prevents negative stock |
+| use-case entitlement check removed | both entitlement tests fail |
+| ownership catalogue removed | downgrade test fails |
+
+### Packaged artifacts
+| Build | Inventory in image | Discovered at runtime | Launch |
+|---|:--:|:--:|---|
+| `--plan professional` | ✅ | ✅ `[inventory]` | starts, dev warning |
+| `--plan basic` | ❌ | `[]` | starts, dev warning |
+| `--plan basic --release` | — | — | **refuses before creating any data** |
+
+### Tests added
+`CompanyEnforcementIT` 3 · `LicenceModeTest` 3 · `InventorySchemaConstraintIT` 9 ·
+`TableOwnersIT` 4 · `InventoryModuleTest` 6 · `InventoryIT` 19 ·
+`InventoryPlanChangeIT` 2.
+
+### Risks / not done
+- **Development entitlement** activates every packaged module without a
+  licence. Safe only because a release build refuses to start; replaced when
+  activation is built (P13).
+- A table neither catalogued nor claimed is still permitted as kernel — bounded
+  by the classification test, not eliminated.
+- Concurrency test proves the invariant under contention but, as in P5, does not
+  isolate the guarded UPDATE (writers are serialised); the UPDATE and the CHECK
+  are tested directly.
+- No inventory screens; no default warehouse or units are seeded (UX for P7c).
+- Movement dates are not checked against fiscal years or closed periods (P11).
 
