@@ -5,10 +5,10 @@
 original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
-P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven).
+P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
+B-1 (2026-10-09).
 
-**Still open:** B-1 (⛔ blocked on a product decision, see below) · B-2 · B-4 ·
-B-5 · P6-4-UI · I-1…I-3, I-6…I-18 · N-2…N-9.
+**Still open:** B-2 · B-4 · B-5 · P6-4-UI · I-1…I-3, I-6…I-18 · N-2…N-9.
 
 ## Classification
 
@@ -23,10 +23,35 @@ B-5 · P6-4-UI · I-1…I-3, I-6…I-18 · N-2…N-9.
 # 🔴 BLOCKING
 
 > Resolved items stay in this section with their original text intact, marked
-> ✅ and dated. Only the four unmarked entries — **B-1, B-2, B-4, B-5** — are
+> ✅ and dated. Only the three unmarked entries — **B-2, B-4, B-5** — are
 > still open.
 
-## B-1 · Inventory: perpetual or periodic?
+## B-1 · Inventory: perpetual or periodic? — ✅ **DECIDED 2026-10-09**
+
+> **Decision (user, 2026-10-09).** Target customer for the first commercial
+> release is **traders, distributors, retailers, service businesses and mixed
+> SMEs** (answer **A**). Inventory is therefore **periodic in form 5a:
+> perpetual quantities, periodic valuation**, with the period-end
+> closing-stock adjustment posted as a **real voucher through
+> `PostingService`** — never derived invisibly at report time.
+>
+> **This supersedes the original recommendation below**, which favoured
+> perpetual before customer positioning was known. The original text is kept
+> unedited for the audit trail.
+>
+> **Consequences accepted.**
+> - P7 (documents) does not depend on P8 (costing); purchases post to a
+>   Purchase Accounts ledger, sales post revenue only — no COGS at issue.
+> - Stock *quantities* are live and exact at every moment.
+> - Interim gross profit is **provisional** between period ends and must be
+>   labelled so in the UI.
+> - No per-invoice margin without a valuation run.
+> - Moving to perpetual later is a **migration**, not a switch.
+> - P11 must include the closing-stock voucher in year-end close.
+> - A-1 (persisted cost layers) stands unchanged.
+>
+> **Not decided by this:** I-1 (costing method), I-2 (granularity), I-3 (scrap).
+> Detail: `B1_INVENTORY_DECISION_BRIEF.md` §10.
 
 > ⛔ **BLOCKED ON A PRODUCT DECISION, not on further analysis.**
 > The brief is complete; the one missing input is customer positioning, which
@@ -509,8 +534,9 @@ RESOLVED
   B-8 dormant read ─┘                               ✅ metadata delivered
                      └──► P13 admin portal · P14 upgrade/downgrade
 
+  B-1 inventory → periodic 5a (2026-10-09) ──► P7 masters ──► P8 costing
+
 STILL OPEN
-  B-1 inventory perpetual/periodic ──► P7 masters ──► P8 costing
   B-2 year-end closing ─────────────► P11 year-end + reporting
   B-4 GST rounding ─────────────────► P9 Indian taxation
   B-5 payroll rounding ─────────────► P15 HR/payroll (deferred)

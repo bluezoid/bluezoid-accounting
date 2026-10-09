@@ -1,6 +1,6 @@
 # B-1 Decision Brief — Perpetual or Periodic Inventory?
 
-**Status:** 🔴 BLOCKING · awaiting decision · **Date:** 2026-09-03
+**Status:** ✅ DECIDED 2026-10-09 — **periodic 5a** (customer answer A; see OPEN_DECISIONS B-1) · **Brief date:** 2026-09-03
 **Gates:** P7 (inventory masters, sales/purchase documents), P8 (costing)
 **Does NOT decide:** I-1 (costing method), I-2 (granularity), I-3 (scrap).
 Those are separate and should be settled inside P7/P8 with this as context.
