@@ -229,9 +229,12 @@ public final class CompanyService implements AutoCloseable {
                        COALESCE(SUM(e.credit_amount_e4), 0) AS credits
                 FROM ledger l
                 JOIN ledger_group g ON g.id = l.group_id
+                -- The posted filter sits on the entry join itself. On a LEFT
+                -- JOIN of voucher it would only null v's columns while SUM still
+                -- read every entry, drafts included - the P6 3.1 defect class.
                 LEFT JOIN voucher_entry e ON e.ledger_id = l.id
-                LEFT JOIN voucher v ON v.id = e.voucher_id
-                     AND v.is_posted = 1
+                     AND EXISTS (SELECT 1 FROM voucher v
+                                 WHERE v.id = e.voucher_id AND v.is_posted = 1)
                 GROUP BY l.id, l.name, g.nature
                 ORDER BY l.name
                 """;

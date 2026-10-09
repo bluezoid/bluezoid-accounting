@@ -174,6 +174,40 @@ class CompanyLifecycleIT {
     }
 
     @Test
+    @DisplayName("an unposted voucher's entries never reach a ledger balance")
+    void draftEntriesAreNotBalances(@TempDir Path dir) throws Exception {
+        try (CompanyService service = CompanyService.start(dir)) {
+            Company company = service.createCompany("Alpha Traders");
+            service.openCompany(company.id());
+
+            // A DRAFT voucher with entries. Same defect class as P6 3.1: a
+            // posted-only filter placed on a LEFT JOIN of voucher, while SUM
+            // reads voucher_entry, filters nothing.
+            service.companyDatabase().inTransaction(connection -> {
+                try (Statement s = connection.createStatement()) {
+                    s.executeUpdate("INSERT INTO voucher (id, fiscal_year_id, voucher_type_id, "
+                            + "voucher_number, voucher_date, total_debit_e4, total_credit_e4, status, "
+                            + "is_posted, created_at, updated_at) SELECT 'd1', "
+                            + "(SELECT id FROM fiscal_year LIMIT 1), "
+                            + "(SELECT id FROM voucher_type WHERE code = 'JOURNAL'), "
+                            + "'D1', '2026-05-01', 1000000, 1000000, 'DRAFT', 0, 0, 0");
+                    s.executeUpdate("INSERT INTO voucher_entry (id, voucher_id, ledger_id, "
+                            + "debit_amount_e4, credit_amount_e4, created_at) SELECT 'e1', 'd1', id, "
+                            + "1000000, 0, 0 FROM ledger WHERE system_code = 'CASH_IN_HAND'");
+                    s.executeUpdate("INSERT INTO voucher_entry (id, voucher_id, ledger_id, "
+                            + "debit_amount_e4, credit_amount_e4, created_at) SELECT 'e2', 'd1', id, "
+                            + "0, 1000000, 0 FROM ledger WHERE system_code = 'OPENING_BALANCE_EQUITY'");
+                }
+                return null;
+            });
+
+            assertThat(service.ledgerBalances())
+                    .allSatisfy(b -> assertThat(b.balance()).isEqualByComparingTo("0"));
+            assertThat(service.trialBalanceTotals().totalDebits()).isEqualByComparingTo("0");
+        }
+    }
+
+    @Test
     @DisplayName("no cached balance column exists to drift")
     void noCachedBalanceColumn(@TempDir Path dir) throws Exception {
         String id;
