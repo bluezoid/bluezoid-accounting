@@ -49,6 +49,11 @@ public record HistoricalView(String title, String table, List<Column> columns,
             TEXT,
             /** Scaled integer minor units; rendered through the money mapper. */
             MONEY,
+            /**
+             * A quantity stored at {@code Scale.QUANTITY}. Same digits as money,
+             * but never shown as an amount: 2.5 kg is not Rs 2.50.
+             */
+            QUANTITY,
             /** ISO date stored as TEXT. */
             DATE,
             /** Epoch millis. */
