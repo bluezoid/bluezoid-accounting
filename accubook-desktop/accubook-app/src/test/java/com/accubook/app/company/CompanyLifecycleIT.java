@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.sql.Statement;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -204,6 +205,35 @@ class CompanyLifecycleIT {
             assertThat(service.ledgerBalances())
                     .allSatisfy(b -> assertThat(b.balance()).isEqualByComparingTo("0"));
             assertThat(service.trialBalanceTotals().totalDebits()).isEqualByComparingTo("0");
+        }
+    }
+
+    @Test
+    @DisplayName("the open company can be read from outside the service, but never written")
+    void readOpenCompanyCannotWrite(@TempDir Path dir) throws Exception {
+        try (CompanyService service = CompanyService.start(dir)) {
+            Company company = service.createCompany("Alpha Traders");
+            service.openCompany(company.id());
+
+            String name = service.readOpenCompany(connection -> {
+                try (Statement s = connection.createStatement();
+                     var rows = s.executeQuery("SELECT name FROM company_info")) {
+                    rows.next();
+                    return rows.getString(1);
+                }
+            });
+            assertThat(name).isEqualTo("Alpha Traders");
+
+            assertThatThrownBy(() -> service.readOpenCompany(connection -> {
+                try (Statement s = connection.createStatement()) {
+                    return s.executeUpdate("UPDATE company_info SET name = 'Changed'");
+                }
+            })).isInstanceOf(SQLException.class);
+            assertThatThrownBy(() -> service.readOpenCompany(connection -> {
+                try (Statement s = connection.createStatement()) {
+                    return s.execute("PRAGMA query_only = 0");
+                }
+            })).isInstanceOf(SQLException.class);
         }
     }
 

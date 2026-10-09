@@ -1,7 +1,9 @@
 package com.accubook.app.company;
 
+import com.accubook.app.module.DatabaseModuleTransactions;
 import com.accubook.app.provisioning.CompanyProvisioning;
 import com.accubook.app.schema.Schemas;
+import com.accubook.module.ModuleTransactions;
 import com.accubook.persistence.connection.Database;
 import com.accubook.persistence.location.StorageLocationCheck;
 import com.accubook.persistence.lock.ExclusiveLock;
@@ -184,6 +186,20 @@ public final class CompanyService implements AutoCloseable {
                 company.createdAt(), Instant.now());
         registry.markOpened(id, version);
         return this.openCompany;
+    }
+
+    /**
+     * Run a read against the open company.
+     *
+     * <p>The connection cannot write: it comes from the {@code query_only} read
+     * pool and is wrapped by the persistence guard with a refuse-everything
+     * authorization, so even {@code PRAGMA query_only = 0} is refused. That is
+     * what makes it safe to offer outside this package, where
+     * {@link #companyDatabase()} is not - a report can read the books, and
+     * nothing that holds this connection can change them.
+     */
+    public <T> T readOpenCompany(ModuleTransactions.Work<T> work) throws SQLException {
+        return new DatabaseModuleTransactions(companyDatabase()).read(work);
     }
 
     /**
