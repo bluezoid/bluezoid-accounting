@@ -30,13 +30,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("Schema migration safety")
 class SchemaMigrationSafetyIT {
 
+    /**
+     * The shipped schema's version. The synthetic migrations below sit just
+     * past it, so a real new migration never collides with them.
+     */
+    private static final int LATEST = Schemas.companyDatabase().size();
+
     /** A plausible future migration: additive, the common case. */
-    private static final Migration V2_ADD_COLUMN = new Migration(4, "add ledger description", """
+    private static final Migration V2_ADD_COLUMN = new Migration(LATEST + 1, "add ledger description", """
             ALTER TABLE ledger ADD COLUMN description TEXT;
             """);
 
     /** A migration that fails partway, to prove recovery. */
-    private static final Migration V3_BROKEN = new Migration(5, "deliberately invalid", """
+    private static final Migration V3_BROKEN = new Migration(LATEST + 2, "deliberately invalid", """
             ALTER TABLE ledger ADD COLUMN ok_column TEXT;
             THIS IS NOT VALID SQL;
             """);
@@ -68,7 +74,7 @@ class SchemaMigrationSafetyIT {
             withV2.add(V2_ADD_COLUMN);
             MigrationResult result = runner(dir, withV2).migrate(database);
 
-            assertThat(result.toVersion()).isEqualTo(4);
+            assertThat(result.toVersion()).isEqualTo(LATEST + 1);
             assertThat(result.backup()).as("a populated database is backed up first").isPresent();
             assertThat(count(database, "voucher_entry")).isEqualTo(2);
             assertThat(count(database, "ledger_group")).isPositive();
