@@ -40,6 +40,13 @@ class InventoryModuleTest {
     }
 
     @Test
+    @DisplayName("the module's claimed tables agree with the schema's ownership catalogue")
+    void agreesWithCatalogue() {
+        assertThat(new InventoryModule().ownedTables()).containsExactlyInAnyOrderElementsOf(
+                com.accubook.app.entitlement.TableOwners.tablesOf(InventoryModule.ID));
+    }
+
+    @Test
     @DisplayName("each movement type names exactly the warehouses its direction needs")
     void directionRules() {
         assertThatThrownBy(() -> new MovementRequest(MovementType.SALE, "i", null, "w", BigDecimal.ONE,
