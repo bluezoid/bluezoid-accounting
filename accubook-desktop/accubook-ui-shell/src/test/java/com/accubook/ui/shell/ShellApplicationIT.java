@@ -26,17 +26,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * JavaFX needs a display. The usual headless answer, TestFX + Monocle, does not
  * work here: the current Monocle build targets JDK 12-era JavaFX internals and
  * fails against JavaFX 17 with {@code AbstractMethodError} on
- * {@code MonocleWindow._updateViewSize}. The workable options are a real display
- * or {@code Xvfb}, neither of which is guaranteed on a build agent or a
- * developer machine.
- *
- * <p>Rather than leave a suite that fails for environmental reasons - which
- * trains people to ignore red builds - these run only when
- * {@code -Daccubook.ui.tests=true} is set, which CI does after starting Xvfb:
+ * {@code MonocleWindow._updateViewSize}. These tests therefore run on a real X
+ * display - Xvfb on CI and on a developer machine - and only when
+ * {@code -Daccubook.ui.tests=true} is set, so a machine without one does not
+ * report environmental failures as red builds:
  *
  * <pre>
- * Xvfb :99 -screen 0 1280x1024x24 &amp;
- * DISPLAY=:99 mvn verify -Daccubook.ui.tests=true
+ * xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true
  * </pre>
  */
 @DisplayName("Shell application")
