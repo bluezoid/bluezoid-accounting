@@ -28,18 +28,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TableOwnershipTest {
 
     /**
-     * Tables the kernel owns. Deliberately explicit rather than derived: a new
-     * table should have to be classified by a person, not inherited silently.
-     *
-     * <p>The journal tables are kernel by design. If payroll owned
-     * {@code voucher}, a payroll downgrade would stop the trial balance being
-     * maintained and the books would cease to balance.
+     * Tables the kernel owns - the schema's own catalogue, which a test in
+     * accubook-app holds to every table the migrations create. One list, so a
+     * new kernel table cannot be added in one place and missed in another.
      */
-    private static final Set<String> KERNEL_TABLES = Set.of(
-            "company_info", "app_metadata", "company",
-            "fiscal_year", "ledger_group", "ledger", "voucher_type",
-            "number_counter", "voucher", "voucher_entry", "audit_log",
-            "schema_migration");
+    private static final Set<String> KERNEL_TABLES = com.accubook.app.entitlement.TableOwners.KERNEL;
 
     @Test
     @DisplayName("no two modules claim the same table")
