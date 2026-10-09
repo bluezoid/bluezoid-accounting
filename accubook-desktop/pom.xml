@@ -21,6 +21,8 @@
     <module>accubook-app</module>
     <module>accubook-inventory</module>
     <module>accubook-trade</module>
+    <module>accubook-sales-invoicing</module>
+    <module>accubook-purchase-billing</module>
     <module>accubook-ui-shell</module>
     <module>accubook-launcher</module>
   </modules>

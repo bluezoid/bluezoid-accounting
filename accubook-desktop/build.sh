@@ -91,7 +91,9 @@ echo "==> plan '${PLAN}' resolves to ${#PLAN_MODULES[@]} optional modules: ${PLA
 # accounting is here, not in the plan matrix: the posting core is the kernel
 # ledger, present in every build. Omitting it produces an application that
 # cannot post at all - caught by a real build, not by review.
-ALWAYS_INCLUDED=(platform persistence module-api licensing accounting app ui-shell launcher)
+# trade is the document engine shared by sales-invoicing and purchase-billing:
+# a library, not a sellable module, so it is not in the plan matrix.
+ALWAYS_INCLUDED=(platform persistence module-api licensing accounting trade app ui-shell launcher)
 
 is_included() {
   local artifact="$1" candidate
