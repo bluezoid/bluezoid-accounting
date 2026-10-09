@@ -435,4 +435,58 @@ class PostingServiceIT {
             assertEquals(2, fixture.count("voucher"));
         }
     }
+
+    @Nested
+    @DisplayName("posting inside the caller's transaction (P7-5)")
+    class Within {
+
+        @Test
+        @DisplayName("commits with the caller's other work")
+        void commitsTogether() throws SQLException {
+            fixture.database().inTransaction(connection -> {
+                service.postWithin(connection, balanced(null));
+                try (var st = connection.createStatement()) {
+                    st.executeUpdate("UPDATE company_info SET legal_name = 'Test Co Pvt Ltd'");
+                }
+                return null;
+            });
+
+            assertEquals(1, fixture.count("voucher"));
+            assertEquals("Test Co Pvt Ltd", fixture.scalar("SELECT legal_name FROM company_info"));
+        }
+
+        @Test
+        @DisplayName("is rolled back when the caller's later work fails - no orphan voucher")
+        void rollsBackTogether() throws SQLException {
+            assertThrows(IllegalStateException.class, () -> fixture.database().inTransaction(connection -> {
+                service.postWithin(connection, balanced(null));
+                throw new IllegalStateException("stock movement refused");
+            }));
+
+            assertEquals(0, fixture.count("voucher"));
+            assertEquals(0, fixture.count("voucher_entry"));
+            assertEquals(0, fixture.count("audit_log"));
+        }
+
+        @Test
+        @DisplayName("still checks entitlement")
+        void stillChecksEntitlement() {
+            fixture.setState(SALES, com.accubook.module.ModuleState.READ_ONLY);
+            PostingService readOnly = fixture.service();
+
+            assertThrows(com.accubook.module.ModuleNotWritableException.class, () ->
+                    fixture.database().inTransaction(connection -> readOnly.postWithin(connection, balanced(null))));
+        }
+
+        @Test
+        @DisplayName("reverses inside the caller's transaction too")
+        void reverseWithin() throws SQLException {
+            PostedVoucher original = service.post(balanced(null));
+            fixture.database().inTransaction(connection -> service.reverseWithin(connection, original.voucherId(),
+                    new ReversalRequest(SALES, FY, LocalDate.of(2026, 4, 2), "Cancelled", null, null)));
+
+            assertEquals("REVERSED", fixture.scalar("SELECT status FROM voucher WHERE id = '"
+                    + original.voucherId() + "'"));
+        }
+    }
 }

@@ -58,7 +58,7 @@ class PostingBoundaryTest {
     }
 
     @Test
-    @DisplayName("the public API offers no way to write a voucher other than post/reverse")
+    @DisplayName("the public API offers no way to write a voucher other than post/reverse and their in-transaction forms")
     void publicApiIsMinimal() {
         List<String> mutators = Arrays.stream(PostingService.class.getDeclaredMethods())
                 .filter(m -> java.lang.reflect.Modifier.isPublic(m.getModifiers()))
@@ -68,7 +68,10 @@ class PostingBoundaryTest {
                 .sorted()
                 .toList();
 
-        assertEqualsIgnoringOrder(List.of("post", "reverse"), mutators);
+        // postWithin/reverseWithin (P7c) move only the transaction boundary to
+        // the caller, so a document and its stock movement commit together.
+        // They run the same entitlement check and the same sealed writer.
+        assertEqualsIgnoringOrder(List.of("post", "postWithin", "reverse", "reverseWithin"), mutators);
     }
 
     @Test
