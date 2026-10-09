@@ -37,6 +37,15 @@ class MoneyMapperTest {
     }
 
     @Test
+    @DisplayName("stores a quantity at scale 4, refusing finer precision")
+    void storesQuantityAtScaleFour() {
+        assertThat(MoneyMapper.toStored(new BigDecimal("2.5"), Scale.QUANTITY))
+                .isEqualTo(25_000L);
+        assertThatThrownBy(() -> MoneyMapper.toStored(new BigDecimal("0.00001"), Scale.QUANTITY))
+                .isInstanceOf(ArithmeticException.class);
+    }
+
+    @Test
     @DisplayName("round-trips a value unchanged")
     void roundTrips() {
         BigDecimal original = new BigDecimal("1234.5678");

@@ -25,6 +25,16 @@ public enum Scale {
     /** Amounts, balances, totals, tax amounts. Mirrors {@code Decimal(18,4)}. */
     MONEY(4, "_e4"),
 
+    /**
+     * Stock and document quantities. Mirrors {@code Decimal(18,4)}.
+     *
+     * <p>Approved with B-3 but only added when stock first needed it (P7). It
+     * shares money's digits and {@code _e4} suffix, as B-3 recorded; it is a
+     * separate constant so a quantity can never be passed where money is meant
+     * without the call site saying so.
+     */
+    QUANTITY(4, "_e4"),
+
     /** Percentages held as basis points: 18% is stored as 1800. Mirrors {@code Decimal(5,2)}. */
     RATE(2, "_bp"),
 
