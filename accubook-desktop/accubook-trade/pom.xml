@@ -28,6 +28,19 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <!--
+            The integration tests use inventory as the stock port and a second
+            Database handle to create parties. The library itself must never
+            read either module - stock comes through StockPort - so the reads
+            are granted to the test JVM only.
+          -->
+          <argLine>
+            --add-reads accubook.trade=accubook.inventory
+            --add-reads accubook.trade=accubook.persistence
+            --add-reads accubook.trade=accubook.app
+          </argLine>
+        </configuration>
       </plugin>
     </plugins>
   </build>
