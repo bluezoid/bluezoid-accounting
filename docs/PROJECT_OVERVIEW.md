@@ -10,6 +10,14 @@ desktop product that works without an internet connection, is sold under
 per-plan licences with physically modular builds, and keeps customers' books
 safe across updates, plan changes and machine replacement.
 
+## Target customer (first commercial release)
+
+Decided 2026-10-09 (B-1): **traders, wholesalers, distributors, retailers,
+service businesses and mixed SMEs** — businesses that file periodically and
+routinely enter transactions out of order. Inventory-led manufacturers needing
+live per-invoice margin are not the primary target; this is why inventory is
+periodic (perpetual quantities, periodic valuation).
+
 ## Target platforms
 Windows, Linux, macOS — with a bundled Java runtime, so customers never install
 Java themselves.
