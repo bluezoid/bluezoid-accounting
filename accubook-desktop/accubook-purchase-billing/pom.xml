@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.accubook</groupId><artifactId>accubook-desktop</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+  <artifactId>accubook-purchase-billing</artifactId>
+  <name>AccuBook :: Purchase billing</name>
+  <description>Optional feature module: purchase bills and debit notes.</description>
+  <dependencies>
+    <!-- The shared document engine. Never another feature module (P4). -->
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-trade</artifactId></dependency>
+    <dependency>
+      <groupId>com.accubook</groupId><artifactId>accubook-app</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <!-- Test only: a second Database handle creates the party. -->
+          <argLine>
+            --add-reads accubook.purchase.billing=accubook.persistence
+            --add-reads accubook.purchase.billing=accubook.app
+          </argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
