@@ -8,6 +8,7 @@
   <dependencies>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-app</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-accounting</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-controls</artifactId><version>${javafx.version}</version></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-graphics</artifactId><version>${javafx.version}</version></dependency>
@@ -30,10 +31,16 @@
 
             TestFX reads and sets JavaFX launch internals reflectively; these
             opens are test-only scaffolding, never needed by the application.
+
+            The end-to-end test seeds a posted company through the posting core
+            before the shell starts, which needs persistence. The shell module
+            itself must never read persistence, so the read is granted to the
+            test JVM only.
           -->
           <argLine>
             --add-exports javafx.graphics/com.sun.glass.ui=ALL-UNNAMED
             --add-opens javafx.graphics/com.sun.javafx.application=ALL-UNNAMED
+            --add-reads accubook.ui.shell=accubook.persistence
           </argLine>
           <systemPropertyVariables>
             <testfx.robot>glass</testfx.robot>
