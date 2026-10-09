@@ -286,3 +286,93 @@ release-channel build refuses to start.
 Stock movements from documents (P7c, which also needs posting and stock in one
 transaction) · UoM conversion · batches/expiry · valuation (P8) · screens.
 
+---
+
+## 12. P7c detailed design — sales and purchase documents
+
+**Status:** DESIGN — awaiting P7-8…P7-12.
+
+### 12.1 Reference research
+
+| ID | Finding | Evidence |
+|---|---|---|
+| **R-9** *(new)* | The invoice series is chosen from **today's** date with April hard-coded, not from the invoice date. A back-dated March invoice entered in April joins next year's series. | `invoices/route.ts:162` `new Date().getMonth() >= 3` |
+| **R-10** *(new)* | Invoice numbers are 17 characters (`INV/2026-27/00001`). CGST Rule 46(b) allows **at most 16**. Every number the reference issues is non-compliant. | `invoices/route.ts:295` |
+| **R-11** *(new)* | Line amounts are never rounded: `quantity × price × discount% / 100` keeps every digit until Postgres `Decimal(18,4)` silently rounds on insert, while the header total is summed from the unrounded values. Header and lines can disagree. | `invoices/route.ts:244-246, 288` |
+| D-23 | Credit notes post backwards. | (P0) |
+
+### 12.2 Physical modules
+
+The two document families are separate sellable modules (`sales-invoicing`,
+`purchase-billing`, B-7) but share almost all their logic. P4 forbids one
+feature depending on another, so the shared engine is a **library**, not a
+feature:
+
+```
+accubook-trade             (library: line maths, posting plans, numbering, lifecycle)
+   ├── accubook-sales-invoicing    (FeatureModule; owns sales_* tables)
+   └── accubook-purchase-billing   (FeatureModule; owns purchase_* tables)
+```
+
+`accubook-trade` requires `module-api`, `platform` and `accubook.accounting`
+(for posting). It owns no tables and is not a `FeatureModule`.
+
+### 12.3 Two ports
+
+**Posting inside a caller's transaction.** P7-5 requires the voucher and the
+stock movement to commit together. `PostingService` today opens its own
+transaction. Add `PostingService.postWithin(Connection, PostingRequest)` and
+`reverseWithin(...)`: same validation, same entitlement check, same sealed
+writer - only the transaction boundary moves to the caller. The connection a
+feature holds is the guarded one from `ModuleTransactions`.
+
+**Stock without depending on inventory.** `module-api` gains a `StockPort`
+service interface (`record(Connection, movement)`, `item(Connection, id)`).
+`accubook-inventory` `provides` it; the documents library `uses` it through
+`ServiceLoader`. In a BASIC build there is no provider: document lines must be
+item-less (free text, services), and a line naming an item is refused.
+
+### 12.4 Schema — migration 6
+
+Per side (`sales_*` owned by `sales-invoicing`, `purchase_*` by
+`purchase-billing`):
+
+| Table | Key points |
+|---|---|
+| `*_document` | `kind` (`SALES_INVOICE`/`CREDIT_NOTE`; `PURCHASE_BILL`/`DEBIT_NOTE`), `number` (null while DRAFT), `party_id`, `document_date`, `due_date`, `status` `DRAFT`/`POSTED`/`CANCELLED`, `original_document_id` (notes), `voucher_id`, `cancellation_voucher_id`, totals derived from lines; purchase adds `supplier_document_no` |
+| `*_document_line` | `item_id` (nullable), `description`, `quantity_e4`, `rate_e4`, `discount_bp`, `amount_e4`, `warehouse_id` (goods only) |
+| `*_tax_line` | P7-1: exists, stays empty until P9 |
+
+Triggers: a POSTED or CANCELLED document and its lines are immutable except the
+POSTED→CANCELLED transition; a number, once given, never changes.
+
+Seed ledgers: **`SALES_ACCOUNTS`** "Sales" under Sales Accounts and
+**`PURCHASE_ACCOUNTS`** "Purchases" under Direct Expenses (5a), as system ledgers
+— by migration for existing companies, by provisioning for new ones. Both
+modules are in every plan, so P2-1 permits them.
+
+### 12.5 Posting plans (pure functions, property-tested)
+
+| Kind | Party | Sales/Purchases | Round off | Stock |
+|---|---|---|---|---|
+| Sales invoice | Dr total | Cr amount | Cr/Dr | `SALE` out |
+| Credit note | **Cr** total | **Dr** amount | Dr/Cr | `SALES_RETURN` in |
+| Purchase bill | Cr total | Dr amount | Dr/Cr | `PURCHASE` in |
+| Debit note | **Dr** total | **Cr** amount | Cr/Dr | `PURCHASE_RETURN` out |
+
+Property (D-23): for any amounts, a note moves the party and the
+sales/purchases ledger in exactly the opposite direction to its parent kind.
+
+Cancellation: reverse the voucher (P5 `reverse`) and record opposite stock
+movements, in one transaction. The number stays used.
+
+### 12.6 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P7-8** | Document numbering | Allocated **when the document is posted**, not when drafted, so abandoned drafts leave no gaps. Series per kind per fiscal year **of the document date**. Format `INV/26-27/00001` — **15 characters**, within Rule 46(b)'s 16. Prefixes INV, CN, PB, DN. A supplier's own bill number is stored separately. |
+| **P7-9** | Line amount rounding | Each line's amount `quantity × rate − discount` rounded to **paise, half-up**; the document total is the exact sum of rounded lines. Matches the printed invoice; fixes R-11. |
+| **P7-10** | Rounding the document total | Round the total to the **nearest rupee**, posting the difference to Round Off, on by default with a per-document switch. |
+| **P7-11** | Must a credit/debit note reference an original document? | **Yes**: a posted document of the same party, and the note's total may not exceed what remains un-credited. GST returns (P9) need the reference. |
+| **P7-12** | Cancelling a posted document | Allowed only while nothing is allocated against it (P7d) and no note references it; posts a reversal and restores stock; the number stays used. |
+
