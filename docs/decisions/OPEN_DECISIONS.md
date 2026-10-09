@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-6, P6-4-UI (2026-10-09).
+B-1, P7-1…P7-7, P6-4-UI (2026-10-09).
 
 **Still open:** B-2 · B-4 · B-5 · I-1…I-3, I-6…I-18 · N-2…N-9.
 
@@ -310,6 +310,21 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P7-5 Stock coupling:** posting an invoice/bill moves stock in the same
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
+
+## P7-7 · Licence state before activation exists — ✅ **APPROVED 2026-10-09**
+
+> **Question.** P7b installs the persistence guard and module registry in the
+> running application. The real `Entitlement` makes an unactivated install
+> `UNLICENSED` (no read, no write — P3), and activation is not built until P13.
+> What does the launcher use meanwhile?
+>
+> **Decision (user):** a clearly named `DevelopmentEntitlement` (every packaged
+> module `ACTIVE`) with a startup warning, **plus a release gate**. Implemented
+> structurally rather than by inspection: `build.sh --release` bakes
+> `accubook.channel=release` into the launcher, and a release-channel launcher
+> **refuses to start** while activation is not wired. A release build therefore
+> cannot run on the development provider at all. Replaced by the real
+> `EntitlementLoader` when activation is built.
 
 ## P6-1 · Add `is_system` to the `ledger` table? — ✅ **APPROVED 2026-09-03**
 
