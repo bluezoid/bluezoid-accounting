@@ -27,29 +27,33 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("Entitlement enforcement through CompanyService")
 class CompanyEnforcementIT {
 
-    /** Stands in for a feature module; claims a real table for the test. */
+    /**
+     * Stands in for the inventory module, which app cannot depend on. Owns a
+     * real feature table; a kernel table could not be used, since kernel
+     * tables are never gated.
+     */
     private static final FeatureModule NOTES = new FeatureModule() {
         @Override
         public ModuleId id() {
-            return ModuleId.of("notes");
+            return ModuleId.of("inventory");
         }
 
         @Override
         public String displayName() {
-            return "Notes";
+            return "Inventory";
         }
 
         @Override
         public Set<String> ownedTables() {
-            return Set.of("number_counter");
+            return Set.of("warehouse");
         }
     };
 
     private static int writeOwnedTable(CompanyService service) throws Exception {
         return service.openCompanyTransactions().inTransaction(connection -> {
             try (Statement s = connection.createStatement()) {
-                return s.executeUpdate(
-                        "INSERT INTO number_counter (scope, last_number, updated_at) VALUES ('t', 0, 0)");
+                return s.executeUpdate("INSERT INTO warehouse (id, name, created_at, updated_at) "
+                        + "VALUES (lower(hex(randomblob(8))), 'W' || abs(random()), 0, 0)");
             }
         });
     }
@@ -57,17 +61,17 @@ class CompanyEnforcementIT {
     @Test
     @DisplayName("a READ_ONLY module's table refuses writes in an opened company")
     void readOnlyRefused(@TempDir Path dir) throws Exception {
-        Map<String, ModuleState> states = new HashMap<>(Map.of("notes", ModuleState.READ_ONLY));
+        Map<String, ModuleState> states = new HashMap<>(Map.of("inventory", ModuleState.READ_ONLY));
         try (CompanyService service = CompanyService.start(dir,
                 ModuleRegistry.discover(List.of(NOTES)), id -> states.getOrDefault(id, ModuleState.ACTIVE))) {
             service.openCompany(service.createCompany("Alpha Traders").id());
 
             assertThatThrownBy(() -> writeOwnedTable(service))
                     .isInstanceOf(UnauthorizedWriteException.class)
-                    .hasMessageContaining("notes");
+                    .hasMessageContaining("inventory");
 
             // Entitlement restored: the same write goes through.
-            states.put("notes", ModuleState.ACTIVE);
+            states.put("inventory", ModuleState.ACTIVE);
             assertThat(writeOwnedTable(service)).isEqualTo(1);
         }
     }

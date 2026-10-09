@@ -18,17 +18,17 @@ import java.util.Optional;
  * about SQL. Keeping the join here is what lets either side be tested without
  * the other, and stops the persistence layer growing a licensing dependency.
  *
- * <h2>Unowned tables</h2>
- * A table no module claims is a <em>kernel</em> table - companies, migrations,
- * settings, the chart of accounts. These are permitted, because they are not
- * part of any sellable module and blocking them would stop the application
- * opening at all.
+ * <h2>Who owns a table</h2>
+ * {@link TableOwners} first: it classifies every table the shipped schema
+ * creates, so a feature table keeps its owner in a build that does not contain
+ * the module - a BASIC build's inventory tables are owned by an inventory
+ * module that is DORMANT there, and are refused. Kernel tables are never gated,
+ * even if a module wrongly claims one.
  *
- * <p>This is the one place the guard fails open, so it is bounded deliberately:
- * ownership is validated at startup by {@link ModuleRegistry}, which refuses to
- * start when two modules claim the same table. A feature table that reached
- * production unowned would be permitted - which is why table ownership is
- * asserted in the architecture tests rather than left to review.
+ * <p>A table neither the catalogue nor any installed module knows is permitted
+ * as kernel. That is the one remaining way the guard fails open, and it is
+ * bounded by a test asserting that every table the migrations create is
+ * classified in {@link TableOwners}.
  */
 public final class ModuleWriteAuthorization implements WriteAuthorization {
 
@@ -42,7 +42,15 @@ public final class ModuleWriteAuthorization implements WriteAuthorization {
 
     @Override
     public Optional<String> refuse(String table) {
-        Optional<ModuleId> owner = registry.ownerOf(table);
+        // Kernel tables are never gated - even if a module wrongly claims one,
+        // which would otherwise let a downgrade stop the books balancing.
+        if (TableOwners.isKernel(table)) {
+            return Optional.empty();
+        }
+        // The schema's catalogue first: it knows a feature table's owner even
+        // when that module is not in this build. The registry covers tables
+        // the catalogue does not know, such as a test's own.
+        Optional<ModuleId> owner = TableOwners.featureOwnerOf(table).or(() -> registry.ownerOf(table));
         if (owner.isEmpty()) {
             return Optional.empty();
         }
