@@ -1,6 +1,6 @@
 # Phase 7 Report — Parties, Inventory Masters, Sales & Purchase Documents
 
-**Status:** IN PROGRESS — P7a ✅ complete · P7b–P7e not started
+**Status:** IN PROGRESS — P7a ✅ complete · P6-4 screen ✅ closed · P7b–P7e not started
 **Design:** `PHASE_7_DESIGN.md` (decisions P7-1…P7-6 approved 2026-10-09)
 
 ---
@@ -73,3 +73,44 @@ optional module exists; **P7b must wire it in the composition root**.
   the posting package. Recommend a kernel master-data audit path before P16.
 - GSTIN / PAN / state code are stored but not validated — P9.
 - No UI.
+
+---
+
+## Carried from P6 — trial balance screen (P6-4-UI) ✅ (2026-10-09)
+
+**Tests:** 446 passing · 0 failing · 9 UI skipped (default build) ·
+**455 passing, 0 failing with UI tests on Xvfb** · UI suite stable across 4 runs.
+
+### What was wrong with the UI tests
+They had never run. `accubook-ui-shell/pom.xml` forced Monocle headless even
+on a real display, and Monocle fails on JavaFX 17, so the documented
+`DISPLAY=:99 mvn verify -Daccubook.ui.tests=true` could not have passed. Once
+they ran, one test failed on a button id renamed in an earlier phase.
+Fixed: GTK glass on Xvfb, software rendering, Monocle removed.
+
+### Delivered
+| Item | Where |
+|---|---|
+| `TrialBalanceQuery` — the P6 SQL unchanged, on a caller-supplied connection; `FiscalYear`; default-year rule | `accubook-accounting` |
+| `CompanyService.readOpenCompany` — guarded `query_only` read for callers outside the service | `accubook-app` |
+| `AmountFormat` — Indian grouping, never rounds | `accubook-ui-shell` |
+| `TrialBalanceView` + shell button opens it in its own window | `accubook-ui-shell` |
+
+### Defect found — `CompanyService.ledgerBalances` counted draft vouchers
+Same class as P6 §3.1: posted filter on a `LEFT JOIN voucher` while `SUM` read
+every entry. Latent (test-only caller; nothing writes DRAFT vouchers yet).
+Reproduced by a test (a DRAFT voucher showed ₹100 balances), then fixed.
+
+### Packaged-artifact verification
+`./build.sh --plan basic` → 70 MB `.deb`. Image contains
+`accubook.accounting`; `accubook.ui.shell` requires it. The linked runtime
+started under Xvfb against a fresh data directory with no exception and created
+`app.db`.
+
+### Risks
+- **No CI pipeline exists** in the repository — UI tests run only when someone
+  runs the `xvfb-run` command.
+- The end-to-end UI test grants the test JVM `--add-reads
+  accubook.ui.shell=accubook.persistence` to seed data; the shell module itself
+  does not read persistence.
+
