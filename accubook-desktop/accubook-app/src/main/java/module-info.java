@@ -9,4 +9,5 @@ module accubook.app {
     exports com.accubook.app.company;
     exports com.accubook.app.provisioning;
     exports com.accubook.app.entitlement;
+    exports com.accubook.app.module;
 }
