@@ -389,4 +389,50 @@ class PostingServiceIT {
                                     + original.voucherId() + "'")));
         }
     }
+
+    @Nested
+    @DisplayName("inactive accounts (P6 5.2)")
+    class InactiveAccounts {
+
+        private void deactivateSales() throws SQLException {
+            fixture.database().inUnguardedTransaction(connection -> {
+                try (var st = connection.createStatement()) {
+                    st.executeUpdate("UPDATE ledger SET is_active = 0 WHERE id = '" + SALES_LEDGER + "'");
+                }
+                return null;
+            });
+        }
+
+        @Test
+        @DisplayName("a new posting to an inactive account is refused, leaving nothing behind")
+        void postingRefused() throws SQLException {
+            deactivateSales();
+
+            PostingException e = assertThrows(PostingException.class, () -> service.post(balanced(null)));
+
+            assertTrue(e.getMessage().contains("inactive"), e.getMessage());
+            assertEquals(0, fixture.count("voucher"));
+        }
+
+        @Test
+        @DisplayName("an unknown account is refused by name, not by a foreign-key error")
+        void unknownRefused() {
+            PostingException e = assertThrows(PostingException.class, () -> service.post(
+                    new PostingRequest(SALES, FY, VOUCHER_TYPE, LocalDate.of(2026, 4, 1), null, "x",
+                            List.of(EntryLine.debit(CASH, HUNDRED), EntryLine.credit("nope", HUNDRED)), null)));
+            assertTrue(e.getMessage().contains("No such account"), e.getMessage());
+        }
+
+        @Test
+        @DisplayName("a voucher made before deactivation can still be reversed")
+        void reversalStillAllowed() throws SQLException {
+            PostedVoucher original = service.post(balanced(null));
+            deactivateSales();
+
+            service.reverse(original.voucherId(), new ReversalRequest(SALES, FY,
+                    LocalDate.of(2026, 4, 2), "Entered in error", null, null));
+
+            assertEquals(2, fixture.count("voucher"));
+        }
+    }
 }

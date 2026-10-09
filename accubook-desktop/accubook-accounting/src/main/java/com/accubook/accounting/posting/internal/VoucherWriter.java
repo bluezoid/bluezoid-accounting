@@ -89,6 +89,8 @@ public final class VoucherWriter {
             throw new PostingException("A voucher must move a non-zero amount");
         }
 
+        requireActiveLedgers(connection, request.entries());
+
         String scope = request.voucherTypeId() + ":" + request.fiscalYearId();
         long number = NumberAllocator.next(connection, scope, now);
         String voucherNumber = String.valueOf(number);
@@ -151,6 +153,33 @@ public final class VoucherWriter {
         return new PostedVoucher(reversalId, voucherNumber, request.reversalDate(),
                 MoneyMapper.fromStored(original.totalE4, Scale.MONEY),
                 VoucherStatus.POSTED, false);
+    }
+
+    /**
+     * Every ledger a new posting names must exist and be active (P6 §5.2).
+     *
+     * <p>Deactivating an account hides it from new business; its history and
+     * balance stay in the books. Only {@link #post} checks this - a reversal
+     * may still touch a deactivated account, or a wrong entry made before the
+     * account was closed could never be corrected.
+     */
+    private static void requireActiveLedgers(Connection connection, List<EntryLine> entries)
+            throws SQLException {
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT name, is_active FROM ledger WHERE id = ?")) {
+            for (String ledgerId : entries.stream().map(EntryLine::ledgerId).distinct().toList()) {
+                select.setString(1, ledgerId);
+                try (ResultSet rows = select.executeQuery()) {
+                    if (!rows.next()) {
+                        throw new PostingException("No such account: " + ledgerId);
+                    }
+                    if (rows.getInt(2) == 0) {
+                        throw new PostingException("The account \"" + rows.getString(1)
+                                + "\" is inactive and cannot receive new postings. Reactivate it first.");
+                    }
+                }
+            }
+        }
     }
 
     private static void insertVoucher(Connection connection, String id, String fiscalYearId,
