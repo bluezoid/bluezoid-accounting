@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.accubook</groupId><artifactId>accubook-desktop</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+  <artifactId>accubook-module-api</artifactId>
+  <name>AccuBook :: Module API</name>
+  <description>FeatureModule SPI. Contract only in P1; registry lands in P4.</description>
+  <dependencies>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
+    <!-- Note: no dependency on accubook-licensing. The isolation test asserts
+         that a feature module can determine its state without one. -->
+  </dependencies>
+</project>

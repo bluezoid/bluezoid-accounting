@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.accubook</groupId><artifactId>accubook-desktop</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+  <artifactId>accubook-app</artifactId>
+  <name>AccuBook :: Application</name>
+  <description>Use cases. Owns the transaction boundary.</description>
+  <dependencies>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-persistence</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-licensing</artifactId></dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        Integration tests (*IT) hit a real SQLite file, so they run in the
+        integration-test phase rather than with the unit tests. Failsafe also
+        reports failures at verify, which keeps a broken IT from being missed
+        when the build output is long.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.accubook</groupId><artifactId>accubook-desktop</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+  <artifactId>accubook-ui-shell</artifactId>
+  <name>AccuBook :: UI Shell</name>
+  <description>JavaFX shell. Never imports a feature module.</description>
+  <dependencies>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-app</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
+    <dependency><groupId>org.openjfx</groupId><artifactId>javafx-controls</artifactId><version>${javafx.version}</version></dependency>
+    <dependency><groupId>org.openjfx</groupId><artifactId>javafx-graphics</artifactId><version>${javafx.version}</version></dependency>
+    <dependency><groupId>org.openjfx</groupId><artifactId>javafx-base</artifactId><version>${javafx.version}</version></dependency>
+    <dependency><groupId>org.testfx</groupId><artifactId>testfx-junit5</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testfx</groupId><artifactId>openjfx-monocle</artifactId><scope>test</scope></dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <!--
+            Monocle reaches into JavaFX internals, which JPMS blocks by default.
+            These exports are test-only scaffolding; the application itself
+            never needs them.
+          -->
+          <argLine>
+            --add-exports javafx.graphics/com.sun.glass.ui=ALL-UNNAMED
+            --add-exports javafx.graphics/com.sun.glass.ui.delegate=ALL-UNNAMED
+            --add-exports javafx.graphics/com.sun.javafx.application=ALL-UNNAMED
+            --add-exports javafx.graphics/com.sun.javafx.util=ALL-UNNAMED
+            --add-opens javafx.graphics/com.sun.glass.ui=ALL-UNNAMED
+          </argLine>
+          <!--
+            Headless: CI has no display, and a UI test that needs one is a UI
+            test that does not run. Monocle provides the software pipeline.
+          -->
+          <systemPropertyVariables>
+            <testfx.robot>glass</testfx.robot>
+            <testfx.headless>true</testfx.headless>
+            <glass.platform>Monocle</glass.platform>
+            <monocle.platform>Headless</monocle.platform>
+            <prism.order>sw</prism.order>
+            <prism.text>t2k</prism.text>
+            <java.awt.headless>true</java.awt.headless>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

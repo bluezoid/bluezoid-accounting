@@ -1,0 +1,84 @@
+# ============================================================
+# Build output
+# ============================================================
+# Covers every module's target/, including the jlink runtime image,
+# jpackage installers, extracted natives and copied dependencies.
+target/
+*.class
+
+# ============================================================
+# Java / Maven noise
+# ============================================================
+hs_err_pid*.log
+replay_pid*.log
+dependency-reduced-pom.xml
+.flattened-pom.xml
+release.properties
+pom.xml.versionsBackup
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ============================================================
+# IDE
+# ============================================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+nbproject/
+*.swp
+
+# ============================================================
+# OS
+# ============================================================
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Customer accounting data - MUST NEVER BE COMMITTED
+# ============================================================
+# These are the live databases and their WAL sidecars. Committing one
+# would publish a customer's books. Scoped to the runtime data directory
+# and test output rather than a bare *.db, so a legitimately shipped
+# template or seed database under src/main/resources stays committable.
+/data/
+**/app.db
+**/app.db-wal
+**/app.db-shm
+**/company.db
+**/company.db-wal
+**/company.db-shm
+*.db-wal
+*.db-shm
+*.bak
+*.failed-*
+/backups/
+/logs/
+
+# ============================================================
+# Local secrets / signing material
+# ============================================================
+# Certificates and keystores must never enter the repository.
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.pem
+*.key
+.env
+.env.local
+signing.properties
+
+# ============================================================
+# Claude Code
+# ============================================================
+# The whole directory is local-only and is not pushed to GitHub.
+# Note: this includes the project memory and instructions, so they live
+# only on this machine - see docs/ for anything that must be shared with
+# other developers or survive a fresh clone.
+.claude/
