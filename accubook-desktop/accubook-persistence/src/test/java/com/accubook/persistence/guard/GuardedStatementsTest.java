@@ -36,7 +36,7 @@ class GuardedStatementsTest {
             "CREATE TABLE payroll_runs (id INTEGER)",
             "VACUUM INTO '/tmp/x.db'",
             "ALTER TABLE payroll_runs ADD COLUMN x TEXT"})
-    @DisplayName("reads, transaction control and schema operations are not gated")
+    @DisplayName("reads, transaction control and schema operations are not data mutations")
     void ignoresNonMutations(String sql) {
         assertFalse(GuardedStatements.isMutating(sql), sql);
     }
@@ -59,6 +59,60 @@ class GuardedStatementsTest {
     @DisplayName("the target table is extracted and normalised to lower case")
     void extractsTable(String sql, String expected) {
         assertEquals(expected, GuardedStatements.targetTable(sql).orElseThrow());
+    }
+
+    @Test
+    @DisplayName("a comment or a WITH clause cannot hide a mutation or its table")
+    void seesThroughCommentsAndCtes() {
+        assertMutationOf("/* note */ INSERT INTO payroll_runs VALUES (1)", "payroll_runs");
+        assertMutationOf("-- why\n  DELETE FROM payroll_runs", "payroll_runs");
+        assertMutationOf("WITH x AS (SELECT 1) INSERT INTO payroll_runs SELECT * FROM x", "payroll_runs");
+        assertMutationOf("WITH x AS (SELECT 1) UPDATE payroll_runs SET a = 1", "payroll_runs");
+    }
+
+    private static void assertMutationOf(String sql, String table) {
+        assertTrue(GuardedStatements.isMutating(sql), sql);
+        assertEquals(table, GuardedStatements.targetTable(sql).orElseThrow(), sql);
+    }
+
+    @Test
+    @DisplayName("a read-only WITH query is not a mutation")
+    void readOnlyCteIsNotMutating() {
+        assertFalse(GuardedStatements.isMutating("WITH x AS (SELECT 1) SELECT * FROM x"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "DROP TABLE payroll_runs",
+            "/* x */ ALTER TABLE payroll_runs ADD COLUMN y TEXT",
+            "CREATE TRIGGER t AFTER INSERT ON a BEGIN DELETE FROM payroll_runs; END",
+            "ATTACH DATABASE '/tmp/other.db' AS other",
+            "COMMIT",
+            "BEGIN",
+            "ROLLBACK",
+            "PRAGMA query_only = 0",
+            "PRAGMA foreign_keys = OFF",
+            "PRAGMA query_only(0)",
+            "VACUUM",
+            "SOMETHING_NEW payroll_runs"})
+    @DisplayName("statements a guarded unit of work may never run are refused")
+    void forbidsEscapes(String sql) {
+        assertTrue(GuardedStatements.forbiddenReason(sql).isPresent(), sql);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "SELECT 1",
+            "INSERT INTO invoices VALUES (1)",
+            "SAVEPOINT s1",
+            "RELEASE s1",
+            "ROLLBACK TO s1",
+            "PRAGMA table_info(invoices)",
+            "PRAGMA foreign_key_check",
+            "PRAGMA user_version"})
+    @DisplayName("ordinary reads, writes, savepoints and reporting pragmas are not forbidden")
+    void permitsOrdinaryStatements(String sql) {
+        assertTrue(GuardedStatements.forbiddenReason(sql).isEmpty(), sql);
     }
 
     @Test

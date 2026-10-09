@@ -65,6 +65,10 @@ public final class GuardedConnection {
      * the guard advisory.
      */
     static void authorize(String sql, WriteAuthorization authorization) throws java.sql.SQLException {
+        Optional<String> forbidden = GuardedStatements.forbiddenReason(sql);
+        if (forbidden.isPresent()) {
+            throw new UnauthorizedWriteException("<statement>", forbidden.get() + ": " + sql);
+        }
         if (!GuardedStatements.isMutating(sql)) {
             return;
         }

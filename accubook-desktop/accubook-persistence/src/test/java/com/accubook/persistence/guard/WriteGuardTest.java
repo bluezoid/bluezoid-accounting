@@ -235,6 +235,67 @@ class WriteGuardTest {
         }
 
         @Test
+        @DisplayName("a comment in front of the verb does not hide a write to a locked table")
+        void commentDoesNotHideWrite() throws SQLException {
+            assertThrows(UnauthorizedWriteException.class, () ->
+                    database.inTransaction(connection -> {
+                        try (Statement s = connection.createStatement()) {
+                            return s.executeUpdate("/* routine */ INSERT INTO payroll_runs VALUES (2, 1)");
+                        }
+                    }));
+            assertEquals(1, countIn("payroll_runs"));
+        }
+
+        @Test
+        @DisplayName("a write inside a WITH clause is guarded")
+        void cteWriteIsGuarded() throws SQLException {
+            assertThrows(UnauthorizedWriteException.class, () ->
+                    database.inTransaction(connection -> {
+                        try (Statement s = connection.createStatement()) {
+                            return s.executeUpdate(
+                                    "WITH n AS (SELECT 3 AS id) INSERT INTO payroll_runs SELECT id, 1 FROM n");
+                        }
+                    }));
+            assertEquals(1, countIn("payroll_runs"));
+        }
+
+        @Test
+        @DisplayName("a locked table cannot be dropped through a guarded transaction")
+        void dropIsRefused() throws SQLException {
+            assertThrows(UnauthorizedWriteException.class, () ->
+                    database.inTransaction(connection -> {
+                        try (Statement s = connection.createStatement()) {
+                            return s.execute("DROP TABLE payroll_runs");
+                        }
+                    }));
+            assertEquals(1, countIn("payroll_runs"));
+        }
+
+        @Test
+        @DisplayName("COMMIT mid-work is refused, so the unit of work stays atomic")
+        void midWorkCommitIsRefused() throws SQLException {
+            assertThrows(UnauthorizedWriteException.class, () ->
+                    database.inTransaction(connection -> {
+                        try (Statement s = connection.createStatement()) {
+                            s.executeUpdate("INSERT INTO invoices VALUES (9, 1)");
+                            return s.execute("COMMIT");
+                        }
+                    }));
+            assertEquals(0, countIn("invoices"), "the first insert must have rolled back");
+        }
+
+        @Test
+        @DisplayName("database settings cannot be changed mid-transaction")
+        void settingPragmaIsRefused() {
+            assertThrows(UnauthorizedWriteException.class, () ->
+                    database.inTransaction(connection -> {
+                        try (Statement s = connection.createStatement()) {
+                            return s.execute("PRAGMA foreign_keys = OFF");
+                        }
+                    }));
+        }
+
+        @Test
         @DisplayName("a nested prepared statement created mid-transaction is still guarded")
         void guardsStatementsCreatedLater() {
             assertThrows(UnauthorizedWriteException.class, () ->
