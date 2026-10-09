@@ -75,6 +75,18 @@ class PostingBoundaryTest {
     }
 
     @Test
+    @DisplayName("TransactionalPosting offers only the two in-transaction writes")
+    void transactionalApiIsMinimal() {
+        List<String> mutators = Arrays.stream(TransactionalPosting.class.getDeclaredMethods())
+                .filter(m -> java.lang.reflect.Modifier.isPublic(m.getModifiers()))
+                .map(Method::getName)
+                .sorted()
+                .toList();
+
+        assertEqualsIgnoringOrder(List.of("postWithin", "reverseWithin"), mutators);
+    }
+
+    @Test
     @DisplayName("the core does not depend on the licensing module")
     void coreDoesNotKnowAboutLicensing() {
         // It receives an EntitlementGuard and never learns that licences,
