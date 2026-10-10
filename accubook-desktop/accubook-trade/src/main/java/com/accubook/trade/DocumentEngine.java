@@ -171,6 +171,7 @@ public final class DocumentEngine {
             FiscalYearRow year = fiscalYearFor(connection, doc.date);
             if (doc.kind.isNote()) {
                 requireWithinUncredited(connection, doc);
+                requireItemsWithinOriginal(connection, doc);
             }
             List<DocumentLine> docLines = loadLines(connection, documentId);
             boolean movesStock = docLines.stream().anyMatch(line -> line.warehouseId() != null);
@@ -409,6 +410,57 @@ public final class DocumentEngine {
             throw new TradeException("This " + label(note.kind) + " for " + note.total.toPlainString()
                     + " exceeds what remains of " + original.number + " (" + remaining.toPlainString() + ")");
         }
+    }
+
+    /**
+     * P7-17: a note may not return more of an item than the original carried,
+     * less what earlier posted notes already returned. The amount limit alone
+     * would let a note return 10 kg against an invoice for 5 kg if the value
+     * happened to fit. Free-text lines carry no quantity of anything and are
+     * governed by the amount limit only.
+     */
+    private void requireItemsWithinOriginal(Connection connection, Header note) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("""
+                WITH this_note AS (
+                    SELECT item_id, SUM(quantity_e4) AS q, MIN(description) AS name
+                    FROM %1$s WHERE document_id = ? AND item_id IS NOT NULL GROUP BY item_id
+                ),
+                original AS (
+                    SELECT item_id, SUM(quantity_e4) AS q FROM %1$s
+                    WHERE document_id = ? AND item_id IS NOT NULL GROUP BY item_id
+                ),
+                earlier AS (
+                    SELECT l.item_id, SUM(l.quantity_e4) AS q
+                    FROM %1$s l JOIN %2$s d ON d.id = l.document_id
+                    WHERE d.original_document_id = ? AND d.status = 'POSTED' AND l.item_id IS NOT NULL
+                    GROUP BY l.item_id
+                )
+                SELECT n.name, n.q, COALESCE(o.q, 0) AS original_q, COALESCE(e.q, 0) AS earlier_q
+                FROM this_note n
+                LEFT JOIN original o ON o.item_id = n.item_id
+                LEFT JOIN earlier e ON e.item_id = n.item_id
+                WHERE n.q + COALESCE(e.q, 0) > COALESCE(o.q, 0)
+                LIMIT 1
+                """.formatted(lines, documents))) {
+            ps.setString(1, note.id);
+            ps.setString(2, note.originalId);
+            ps.setString(3, note.originalId);
+            try (ResultSet rows = ps.executeQuery()) {
+                if (rows.next()) {
+                    BigDecimal original = MoneyMapper.fromStored(rows.getLong(3), Scale.QUANTITY);
+                    BigDecimal earlier = MoneyMapper.fromStored(rows.getLong(4), Scale.QUANTITY);
+                    throw new TradeException("This " + label(note.kind) + " returns "
+                            + plain(MoneyMapper.fromStored(rows.getLong(2), Scale.QUANTITY)) + " of \""
+                            + rows.getString(1) + "\", but the original carried " + plain(original)
+                            + (earlier.signum() > 0 ? " and earlier notes already returned " + plain(earlier) : "")
+                            + ".");
+                }
+            }
+        }
+    }
+
+    private static String plain(BigDecimal value) {
+        return value.stripTrailingZeros().toPlainString();
     }
 
     private BigDecimal creditedAgainst(Connection connection, String originalId) throws SQLException {

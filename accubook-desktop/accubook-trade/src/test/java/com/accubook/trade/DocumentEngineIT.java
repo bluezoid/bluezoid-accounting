@@ -292,6 +292,33 @@ class DocumentEngineIT {
         }
 
         @Test
+        @DisplayName("P7-17: a note may not return more of an item than the original carried, across notes")
+        void itemQuantityLimited() {
+            Document inv = sales.post(invoice("5", "100").id());
+            // Value fits (10 kg at 10 = 100 against 500), quantity does not.
+            Document tooMany = sales.createDraft(DraftRequest.note(DocumentKind.CREDIT_NOTE, customer.id(), DAY,
+                    inv.id(), List.of(LineRequest.goods(rice.id(), main.id(), d("10"), d("10")))));
+            assertThatThrownBy(() -> sales.post(tooMany.id()))
+                    .hasMessageContaining("returns 10 of \"Basmati Rice\", but the original carried 5");
+
+            sales.post(sales.createDraft(DraftRequest.note(DocumentKind.CREDIT_NOTE, customer.id(), DAY, inv.id(),
+                    List.of(LineRequest.goods(rice.id(), main.id(), d("3"), d("100"))))).id());
+            Document third = sales.createDraft(DraftRequest.note(DocumentKind.CREDIT_NOTE, customer.id(), DAY,
+                    inv.id(), List.of(LineRequest.goods(rice.id(), main.id(), d("2.5"), d("10")))));
+            assertThatThrownBy(() -> sales.post(third.id())).hasMessageContaining("earlier notes already returned 3");
+        }
+
+        @Test
+        @DisplayName("P7-17: an item that was not on the original cannot be returned against it")
+        void itemNotOnOriginal() {
+            Item wheat = inventory.createItem("Wheat", ItemKind.GOODS, rice.unitId(), null, null, null, null);
+            Document inv = sales.post(invoice("5", "100").id());
+            Document note = sales.createDraft(DraftRequest.note(DocumentKind.CREDIT_NOTE, customer.id(), DAY, inv.id(),
+                    List.of(LineRequest.goods(wheat.id(), main.id(), d("1"), d("10")))));
+            assertThatThrownBy(() -> sales.post(note.id())).hasMessageContaining("original carried 0");
+        }
+
+        @Test
         @DisplayName("a note needs a posted original of the same party")
         void needsPostedOriginal() {
             Document draftInvoice = invoice("1", "10");
