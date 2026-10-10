@@ -1,6 +1,6 @@
 # Phase 8 Design — Inventory Valuation (periodic, form 5a)
 
-**Status:** DESIGN — awaiting P8-1…P8-5 · **Date:** 2026-10-10
+**Status:** APPROVED 2026-10-10 (P8-1…P8-5 as recommended) · **Date:** 2026-10-10
 **Baseline:** 610 passing · 0 failing (UI on Xvfb)
 
 > **The roadmap calls this phase "perpetual inventory costing". B-1 chose

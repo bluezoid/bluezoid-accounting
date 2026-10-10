@@ -6,9 +6,9 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21 (2026-10-10).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-5, I-1, I-2 (2026-10-10).
 
-**Still open:** B-2 · B-4 · B-5 · I-1…I-3, I-6…I-18 · N-2…N-9.
+**Still open:** B-2 · B-4 · B-5 · I-3, I-6…I-18 · N-2…N-9.
 
 ## Classification
 
@@ -310,6 +310,21 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P7-5 Stock coupling:** posting an invoice/bill moves stock in the same
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
+
+## P8-1…P8-5 · Phase 8 valuation rules — ✅ **APPROVED 2026-10-10**
+
+> All as recommended in `PHASE_8_DESIGN.md` §5. **Resolves I-1 and I-2.**
+>
+> - **P8-1 (I-1, I-2):** weighted average (default) and FIFO, per item, fixed
+>   once the item has moved; LIFO excluded (AS 2). Costed per item per warehouse.
+> - **P8-2:** weighted average is a **moving** average, recalculated on receipt.
+> - **P8-3:** backdated entries re-cost the item and warehouse forward; posted
+>   valuations at or after that date become stale and must be re-posted, which
+>   corrects on their original date. Closed years refuse it (P11).
+> - **P8-4:** closing stock is posted on demand at any date by a valuation run.
+> - **P8-5:** opening stock and count gains need a unit cost; a positive
+>   adjustment without one is valued at current average; NRV write-downs are
+>   manual adjustments.
 
 ## P7-18…P7-21 · P7e order rules — ✅ **APPROVED 2026-10-10**
 
