@@ -1,6 +1,7 @@
 # Phase 7 Report — Parties, Inventory Masters, Sales & Purchase Documents
 
-**Status:** IN PROGRESS — P7a ✅ · P6-4 screen ✅ · P7b ✅ · P7c ✅ · **P7d ✅** · P7e not started
+**Status:** ✅ **COMPLETE** (2026-10-10) — P7a · P6-4 screen · P7b · P7c · P7d · P7e
+**Final:** 610 passing · 0 failing · 0 skipped (UI on Xvfb) · from a P6 baseline of 373
 **Design:** `PHASE_7_DESIGN.md` (decisions P7-1…P7-6 approved 2026-10-09)
 
 ---
@@ -302,4 +303,63 @@ filter) · **R-13** credit notes are aged as receivables.
 - Opening balances entered on a ledger are not in statements or the trial
   balance until P11.
 - `ChartOfAccounts` still needs a `Database` (unlike `Parties` now).
+
+---
+
+## P7e — Quotations and orders ✅ (2026-10-10)
+
+**Tests:** **610 passing · 0 failing · 0 skipped** with UI on Xvfb (601 + 9 UI)
+**Before P7e:** 590 (+20)
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| P7-21: `purchase-orders` in Professional and Enterprise; a test that no module with a dependency rule is left unsellable | `PlanCatalogue` |
+| Migration 8: quotations, sales/purchase orders and lines; `order_line_id` on document lines; `quotation_id` on sales documents | `Schemas` |
+| Document engine: lines fulfil order lines; no over-fulfilment or fulfilment of closed orders at posting (P7-20); quotation converted in the draft's own transaction | `DocumentEngine` |
+| `OrderEngine`: quotation lifecycle with derived expiry (P7-19), orders numbered on confirmation (D-11), conversion of open quantities, short-close/cancel | `accubook-trade` |
+| **`accubook-sales-orders`**, **`accubook-purchase-orders`** feature modules (depend on inventory) | new modules |
+
+### Reference defects recorded
+R-14 delivered quantity written by nothing · R-15 PO received all-or-nothing ·
+R-16 bills never move stock.
+
+### Our own gap found
+`purchase-orders` was in no plan, despite a dependency rule — no customer could
+ever have bought it. Fixed by P7-21; a test now guards the class of mistake.
+
+### Mutation checks
+| Mutation | Caught by |
+|---|---|
+| over-fulfilment check removed (P7-20) | `noOverFulfilment`, `closeAndReopen` |
+| quotation expiry not derived (P7-19) | `expiredAndRejected` |
+
+### Packaged artifacts
+| Plan | Discovered modules |
+|---|---|
+| basic | `[purchase-billing, sales-invoicing]` |
+| professional | `[purchase-orders, sales-invoicing, inventory, purchase-billing, sales-orders]` |
+
+### Risks / not done
+- No screens for quotations or orders.
+- Delivery challans / goods-receipt notes deferred (P7-18).
+- A credit note does not reduce an order's fulfilled quantity (returns after
+  delivery do not reopen the order) — deliberate; revisit if customers need it.
+- Two drafts may be converted from one order; only posting is limited (P7-20),
+  which is the authoritative point.
+
+---
+
+## Phase 7 — summary
+
+| | |
+|---|---|
+| Exit criterion | ✅ invoice → receipt → ledger → statement reconciles exactly; a credit note reduces revenue and receivables |
+| New modules | inventory, trade (library), sales-invoicing, purchase-billing, sales-orders, purchase-orders, integration-tests |
+| Migrations | 4 parties · 5 inventory · 6 documents · 7 settlement · 8 orders |
+| Decisions | B-1, P7-1…P7-21 — all yours, all recorded |
+| Reference defects found | R-5 … R-16 |
+| Our own defects found and fixed | write guard fail-open; absent modules' tables writable; posting to inactive accounts; draft vouchers in ledger balances; UI tests never ran; IDE overwriting test classes; deleting allocations would falsify history; plan gap for purchase orders |
+| Biggest remaining gap | **no screens** beyond the trial balance |
 
