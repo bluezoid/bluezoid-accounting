@@ -53,7 +53,13 @@ public final class TableOwners {
             Map.entry("purchase_document_line", ModuleId.of("purchase-billing")),
             Map.entry("purchase_tax_line", ModuleId.of("purchase-billing")),
             Map.entry("purchase_settlement", ModuleId.of("purchase-billing")),
-            Map.entry("purchase_allocation", ModuleId.of("purchase-billing")));
+            Map.entry("purchase_allocation", ModuleId.of("purchase-billing")),
+            Map.entry("sales_quotation", ModuleId.of("sales-orders")),
+            Map.entry("sales_quotation_line", ModuleId.of("sales-orders")),
+            Map.entry("sales_order", ModuleId.of("sales-orders")),
+            Map.entry("sales_order_line", ModuleId.of("sales-orders")),
+            Map.entry("purchase_order", ModuleId.of("purchase-orders")),
+            Map.entry("purchase_order_line", ModuleId.of("purchase-orders")));
 
     private TableOwners() {
     }

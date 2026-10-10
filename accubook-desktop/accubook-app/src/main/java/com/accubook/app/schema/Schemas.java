@@ -60,7 +60,7 @@ public final class Schemas {
     public static List<Migration> companyDatabase() {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
                 COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
-                COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT);
+                COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS);
     }
 
     /**
@@ -1067,5 +1067,156 @@ public final class Schemas {
             END;
 
             """.formatted(side);
+    }
+
+    /**
+     * Phase 7e quotations and orders.
+     *
+     * <p>Commitments, not accounting: nothing here posts. An order is fulfilled
+     * by the invoices or bills raised against it (P7-18), linked line by line
+     * through {@code order_line_id}; the fulfilled quantity is derived from
+     * those links and never stored - the reference's {@code deliveredQty} is
+     * written by nothing (R-14).
+     *
+     * <p>Quotations and sales orders are owned by {@code sales-orders},
+     * purchase orders by {@code purchase-orders}. The new {@code order_line_id}
+     * columns sit on the invoicing modules' line tables and are written by them
+     * when a document is created from an order.
+     */
+    private static final Migration COMPANY_V8_ORDERS = new Migration(8, "quotations and orders", """
+            CREATE TABLE sales_quotation (
+                id             TEXT    NOT NULL PRIMARY KEY,
+                -- Given when the quotation is sent (P7-8 pattern): drafts leave no gap.
+                number         TEXT UNIQUE,
+                party_id       TEXT    NOT NULL REFERENCES party (id),
+                quotation_date TEXT    NOT NULL,
+                valid_until    TEXT    NOT NULL,
+                -- P7-19: expiry is derived from valid_until, never stored.
+                status         TEXT    NOT NULL DEFAULT 'DRAFT'
+                    CHECK (status IN ('DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'CONVERTED')),
+                amount_e4      INTEGER NOT NULL DEFAULT 0 CHECK (amount_e4 >= 0),
+                narration      TEXT,
+                created_at     INTEGER NOT NULL,
+                updated_at     INTEGER NOT NULL,
+                CHECK ((status = 'DRAFT') = (number IS NULL)),
+                CHECK (valid_until >= quotation_date)
+            ) STRICT;
+            """ + orderLines("sales_quotation", "quotation_id") + orderTable("sales_order", "quotation_id TEXT REFERENCES sales_quotation (id),")
+            + orderLines("sales_order", "order_id") + orderTable("purchase_order", "") + orderLines("purchase_order", "order_id")
+            + """
+            -- A quotation is frozen once sent; only its status moves on.
+            CREATE TRIGGER sales_quotation_frozen
+            BEFORE UPDATE ON sales_quotation
+            WHEN OLD.status <> 'DRAFT'
+             AND NOT (NEW.number = OLD.number AND NEW.party_id = OLD.party_id
+                      AND NEW.quotation_date = OLD.quotation_date AND NEW.valid_until = OLD.valid_until
+                      AND NEW.amount_e4 = OLD.amount_e4)
+            BEGIN
+                SELECT RAISE(ABORT, 'A sent quotation cannot be changed');
+            END;
+
+            CREATE TRIGGER sales_quotation_no_delete
+            BEFORE DELETE ON sales_quotation
+            WHEN OLD.status <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'A sent quotation cannot be deleted');
+            END;
+
+            -- Invoice and bill lines remember the order line they fulfil.
+            ALTER TABLE sales_document_line ADD COLUMN order_line_id TEXT REFERENCES sales_order_line (id);
+            ALTER TABLE purchase_document_line ADD COLUMN order_line_id TEXT REFERENCES purchase_order_line (id);
+            CREATE INDEX idx_sales_document_line_order ON sales_document_line (order_line_id);
+            CREATE INDEX idx_purchase_document_line_order ON purchase_document_line (order_line_id);
+
+            -- A quotation converted straight into an invoice (P7-19).
+            ALTER TABLE sales_document ADD COLUMN quotation_id TEXT REFERENCES sales_quotation (id);
+            """);
+
+    private static String orderTable(String table, String extraColumns) {
+        return """
+            CREATE TABLE %1$s (
+                id            TEXT    NOT NULL PRIMARY KEY,
+                number        TEXT UNIQUE,
+                party_id      TEXT    NOT NULL REFERENCES party (id),
+                order_date    TEXT    NOT NULL,
+                expected_date TEXT,
+                %2$s
+                -- Fulfilment (open / partial / fulfilled) is derived from linked
+                -- invoice or bill lines. CLOSED is a short-close (P7-20).
+                status        TEXT    NOT NULL DEFAULT 'DRAFT'
+                    CHECK (status IN ('DRAFT', 'CONFIRMED', 'CLOSED', 'CANCELLED')),
+                close_reason  TEXT,
+                amount_e4     INTEGER NOT NULL DEFAULT 0 CHECK (amount_e4 >= 0),
+                narration     TEXT,
+                created_at    INTEGER NOT NULL,
+                updated_at    INTEGER NOT NULL,
+                CHECK ((status = 'DRAFT') = (number IS NULL)),
+                CHECK ((status IN ('CLOSED', 'CANCELLED')) = (close_reason IS NOT NULL)),
+                CHECK (expected_date IS NULL OR expected_date >= order_date)
+            ) STRICT;
+
+            CREATE INDEX idx_%1$s_party ON %1$s (party_id, order_date);
+
+            -- Confirmed orders are frozen; only CONFIRMED -> CLOSED / CANCELLED.
+            CREATE TRIGGER %1$s_frozen
+            BEFORE UPDATE ON %1$s
+            WHEN OLD.status <> 'DRAFT'
+             AND NOT (OLD.status = 'CONFIRMED' AND NEW.status IN ('CLOSED', 'CANCELLED')
+                      AND NEW.number = OLD.number AND NEW.party_id = OLD.party_id
+                      AND NEW.order_date = OLD.order_date AND NEW.amount_e4 = OLD.amount_e4)
+            BEGIN
+                SELECT RAISE(ABORT, 'A confirmed order cannot be changed; close or cancel it');
+            END;
+
+            CREATE TRIGGER %1$s_no_delete
+            BEFORE DELETE ON %1$s
+            WHEN OLD.status <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'A confirmed order cannot be deleted; close or cancel it');
+            END;
+
+            """.formatted(table, extraColumns);
+    }
+
+    private static String orderLines(String parent, String parentColumn) {
+        return """
+            CREATE TABLE %1$s_line (
+                id           TEXT    NOT NULL PRIMARY KEY,
+                %2$s    TEXT    NOT NULL REFERENCES %1$s (id) ON DELETE CASCADE,
+                sequence     INTEGER NOT NULL,
+                -- Orders and quotations name items: they require inventory (B-7).
+                item_id      TEXT    NOT NULL REFERENCES item (id),
+                description  TEXT    NOT NULL,
+                quantity_e4  INTEGER NOT NULL CHECK (quantity_e4 > 0),
+                rate_e4      INTEGER NOT NULL CHECK (rate_e4 >= 0),
+                discount_bp  INTEGER NOT NULL DEFAULT 0 CHECK (discount_bp BETWEEN 0 AND 10000),
+                amount_e4    INTEGER NOT NULL CHECK (amount_e4 >= 0 AND amount_e4 %% 100 = 0),
+                -- The warehouse a conversion proposes for the invoice line.
+                warehouse_id TEXT REFERENCES warehouse (id),
+                UNIQUE (%2$s, sequence)
+            ) STRICT;
+
+            CREATE TRIGGER %1$s_line_frozen_update
+            BEFORE UPDATE ON %1$s_line
+            WHEN (SELECT status FROM %1$s WHERE id = OLD.%2$s) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'Lines cannot change once confirmed or sent');
+            END;
+
+            CREATE TRIGGER %1$s_line_frozen_insert
+            BEFORE INSERT ON %1$s_line
+            WHEN (SELECT status FROM %1$s WHERE id = NEW.%2$s) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'Lines cannot change once confirmed or sent');
+            END;
+
+            CREATE TRIGGER %1$s_line_frozen_delete
+            BEFORE DELETE ON %1$s_line
+            WHEN (SELECT status FROM %1$s WHERE id = OLD.%2$s) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'Lines cannot change once confirmed or sent');
+            END;
+
+            """.formatted(parent, parentColumn);
     }
 }
