@@ -4,6 +4,7 @@ module accubook.app {
     requires accubook.persistence;
     requires accubook.module.api;
     requires accubook.licensing;
+    requires transitive accubook.tax;
     requires java.sql;
 
     exports com.accubook.app.company;

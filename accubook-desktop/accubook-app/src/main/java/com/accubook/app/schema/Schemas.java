@@ -45,6 +45,31 @@ public final class Schemas {
                             key    TEXT NOT NULL PRIMARY KEY,
                             value  TEXT NOT NULL
                         ) STRICT;
+                        """),
+                // P9a: statutory rule packs (P9-4). Installation state: the
+                // company file stores the tax it resolved, never a pack.
+                new Migration(2, "rule packs", """
+                        CREATE TABLE rule_pack (
+                            version         TEXT    NOT NULL PRIMARY KEY,
+                            issued          TEXT    NOT NULL,
+                            status          TEXT    NOT NULL,
+                            -- The signed file exactly as verified; re-verified on every load.
+                            file            TEXT    NOT NULL,
+                            key_id          TEXT    NOT NULL,
+                            source          TEXT    NOT NULL CHECK (source IN ('BUNDLED', 'IMPORTED')),
+                            installed_at    INTEGER NOT NULL,
+                            installed_order INTEGER NOT NULL UNIQUE
+                        ) STRICT;
+
+                        CREATE TRIGGER rule_pack_no_update BEFORE UPDATE ON rule_pack
+                        BEGIN
+                            SELECT RAISE(ABORT, 'An installed rule pack cannot be changed');
+                        END;
+
+                        CREATE TRIGGER rule_pack_no_delete BEFORE DELETE ON rule_pack
+                        BEGIN
+                            SELECT RAISE(ABORT, 'An installed rule pack cannot be removed');
+                        END;
                         """)
         );
     }

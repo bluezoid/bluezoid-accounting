@@ -35,7 +35,7 @@ public final class TableOwners {
             "company_info", "fiscal_year", "ledger_group", "ledger", "voucher_type",
             "number_counter", "voucher", "voucher_entry", "audit_log", "party",
             // app.db
-            "company", "app_metadata");
+            "company", "app_metadata", "rule_pack");
 
     private static final Map<String, ModuleId> FEATURE = Map.ofEntries(
             Map.entry("unit", ModuleId.of("inventory")),

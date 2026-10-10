@@ -10,6 +10,7 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-persistence</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-licensing</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-tax</artifactId></dependency>
   </dependencies>
 
   <build>

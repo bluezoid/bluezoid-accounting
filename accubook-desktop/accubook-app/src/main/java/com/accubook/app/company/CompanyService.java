@@ -146,6 +146,8 @@ public final class CompanyService implements AutoCloseable {
         try {
             Database appDatabase = Database.open(paths.appDatabase());
             new MigrationRunner(Schemas.appDatabase(), paths.backupsDir()).migrate(appDatabase);
+            // The rule pack shipped with this build, unless a newer one is installed.
+            com.accubook.tax.RulePacks.forThisBuild(appDatabase).installBundled();
             return new CompanyService(paths, appDatabase, lock, modules, moduleStates);
         } catch (RuntimeException | SQLException e) {
             lock.close();
@@ -244,6 +246,21 @@ public final class CompanyService implements AutoCloseable {
      */
     public ModuleTransactions openCompanyTransactions() {
         return new DatabaseModuleTransactions(companyDatabase());
+    }
+
+    /** The statutory rule pack in force on this installation, verified as it loads (P9-4). */
+    public com.accubook.tax.RulePack rules() {
+        return com.accubook.tax.RulePacks.forThisBuild(appDatabase).active();
+    }
+
+    /** Install a newer signed rule pack from a file - the offline route until the admin portal (P13). */
+    public com.accubook.tax.RulePack importRulePack(Path file) {
+        return com.accubook.tax.RulePacks.forThisBuild(appDatabase).importFile(file);
+    }
+
+    /** Every rule pack installed here, oldest first. */
+    public List<com.accubook.tax.RulePacks.Installed> installedRulePacks() {
+        return com.accubook.tax.RulePacks.forThisBuild(appDatabase).installed();
     }
 
     /** The entitlement every module's state is read from. */
