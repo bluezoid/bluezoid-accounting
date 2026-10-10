@@ -12,10 +12,17 @@ import java.util.Objects;
  * @param originalDocumentId required for a note (P7-11), refused otherwise
  * @param roundOff           round the total to the rupee (P7-10, on by default)
  * @param supplierDocumentNo the supplier's own bill number; purchase side only
+ * @param quotationId        the quotation an invoice was made from (P7-19); sales only
  */
 public record DraftRequest(DocumentKind kind, String partyId, LocalDate date, LocalDate dueDate,
                            String originalDocumentId, boolean roundOff, String supplierDocumentNo,
-                           String narration, List<LineRequest> lines) {
+                           String narration, List<LineRequest> lines, String quotationId) {
+
+    public DraftRequest(DocumentKind kind, String partyId, LocalDate date, LocalDate dueDate,
+                        String originalDocumentId, boolean roundOff, String supplierDocumentNo,
+                        String narration, List<LineRequest> lines) {
+        this(kind, partyId, date, dueDate, originalDocumentId, roundOff, supplierDocumentNo, narration, lines, null);
+    }
 
     public DraftRequest {
         Objects.requireNonNull(kind, "kind");
@@ -35,11 +42,16 @@ public record DraftRequest(DocumentKind kind, String partyId, LocalDate date, Lo
 
     public DraftRequest withRoundOff(boolean enabled) {
         return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, enabled, supplierDocumentNo,
-                narration, lines);
+                narration, lines, quotationId);
     }
 
     public DraftRequest withSupplierDocumentNo(String number) {
         return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, roundOff, number,
-                narration, lines);
+                narration, lines, quotationId);
+    }
+
+    public DraftRequest withQuotation(String id) {
+        return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, roundOff, supplierDocumentNo,
+                narration, lines, id);
     }
 }

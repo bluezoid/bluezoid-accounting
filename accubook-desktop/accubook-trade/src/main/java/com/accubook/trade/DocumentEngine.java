@@ -55,6 +55,8 @@ public final class DocumentEngine {
     private final String documents;
     private final String lines;
     private final String allocations;
+    private final String orderLines;
+    private final String orders;
 
     public DocumentEngine(DocumentKind.Side side, ModuleId module, ModuleTransactions transactions,
                           EntitlementGuard entitlement, TransactionalPosting posting,
@@ -69,6 +71,8 @@ public final class DocumentEngine {
         this.documents = side.tablePrefix() + "_document";
         this.lines = side.tablePrefix() + "_document_line";
         this.allocations = side.tablePrefix() + "_allocation";
+        this.orders = side.tablePrefix() + "_order";
+        this.orderLines = side.tablePrefix() + "_order_line";
     }
 
     // ================================================================ drafts
@@ -80,10 +84,9 @@ public final class DocumentEngine {
             Draft draft = validate(connection, request, id);
             try (PreparedStatement ps = connection.prepareStatement("INSERT INTO " + documents
                     + " (id, kind, party_id, document_date, due_date, original_document_id, "
-                    + (side == DocumentKind.Side.PURCHASE ? "supplier_document_no, " : "")
+                    + (side == DocumentKind.Side.PURCHASE ? "supplier_document_no, " : "quotation_id, ")
                     + "round_off_enabled, amount_e4, round_off_e4, total_e4, narration, created_at, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, " + (side == DocumentKind.Side.PURCHASE ? "?, " : "")
-                    + "?, ?, ?, ?, ?, ?, ?)")) {
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 int i = 1;
                 ps.setString(i++, id);
                 ps.setString(i++, request.kind().name());
@@ -91,9 +94,8 @@ public final class DocumentEngine {
                 ps.setString(i++, request.date().toString());
                 ps.setString(i++, draft.dueDate == null ? null : draft.dueDate.toString());
                 ps.setString(i++, request.originalDocumentId());
-                if (side == DocumentKind.Side.PURCHASE) {
-                    ps.setString(i++, blankToNull(request.supplierDocumentNo()));
-                }
+                ps.setString(i++, side == DocumentKind.Side.PURCHASE
+                        ? blankToNull(request.supplierDocumentNo()) : request.quotationId());
                 bindTotals(ps, i, request.roundOff(), draft.money);
                 ps.setString(i + 4, blankToNull(request.narration()));
                 ps.setLong(i + 5, now());
@@ -121,7 +123,7 @@ public final class DocumentEngine {
             }
             try (PreparedStatement ps = connection.prepareStatement("UPDATE " + documents
                     + " SET party_id = ?, document_date = ?, due_date = ?, original_document_id = ?, "
-                    + (side == DocumentKind.Side.PURCHASE ? "supplier_document_no = ?, " : "")
+                    + (side == DocumentKind.Side.PURCHASE ? "supplier_document_no = ?, " : "quotation_id = ?, ")
                     + "round_off_enabled = ?, amount_e4 = ?, round_off_e4 = ?, total_e4 = ?, narration = ?, "
                     + "updated_at = ? WHERE id = ?")) {
                 int i = 1;
@@ -129,9 +131,8 @@ public final class DocumentEngine {
                 ps.setString(i++, request.date().toString());
                 ps.setString(i++, draft.dueDate == null ? null : draft.dueDate.toString());
                 ps.setString(i++, request.originalDocumentId());
-                if (side == DocumentKind.Side.PURCHASE) {
-                    ps.setString(i++, blankToNull(request.supplierDocumentNo()));
-                }
+                ps.setString(i++, side == DocumentKind.Side.PURCHASE
+                        ? blankToNull(request.supplierDocumentNo()) : request.quotationId());
                 bindTotals(ps, i, request.roundOff(), draft.money);
                 ps.setString(i + 4, blankToNull(request.narration()));
                 ps.setLong(i + 5, now());
@@ -176,6 +177,7 @@ public final class DocumentEngine {
                 requireItemsWithinOriginal(connection, doc);
             }
             List<DocumentLine> docLines = loadLines(connection, documentId);
+            requireOrdersOpen(connection, documentId);
             boolean movesStock = docLines.stream().anyMatch(line -> line.warehouseId() != null);
             if (movesStock) {
                 entitlement.requireWritable(INVENTORY, "move stock for a document");
@@ -360,7 +362,7 @@ public final class DocumentEngine {
     }
 
     private record LineValues(String itemId, String description, BigDecimal quantity, BigDecimal rate,
-                              int discountBp, BigDecimal amount, String warehouseId) {
+                              int discountBp, BigDecimal amount, String warehouseId, String orderLineId) {
     }
 
     private Draft validate(Connection connection, DraftRequest request, String selfId) throws SQLException {
@@ -379,6 +381,13 @@ public final class DocumentEngine {
         }
         if (side == DocumentKind.Side.SALES && blankToNull(request.supplierDocumentNo()) != null) {
             throw new TradeException("A supplier's bill number belongs on a purchase document");
+        }
+        if (request.quotationId() != null && (side != DocumentKind.Side.SALES || request.kind().isNote())) {
+            throw new TradeException("Only a sales invoice is made from a quotation");
+        }
+        boolean linksOrders = request.lines().stream().anyMatch(l -> l.orderLineId() != null);
+        if (linksOrders && request.kind().isNote()) {
+            throw new TradeException("A note corrects a document; it does not fulfil an order");
         }
 
         if (request.kind().isNote()) {
@@ -410,6 +419,9 @@ public final class DocumentEngine {
         List<LineValues> values = new ArrayList<>();
         BigDecimal amount = BigDecimal.ZERO;
         for (LineRequest line : request.lines()) {
+            if (line.orderLineId() != null) {
+                requireOrderLine(connection, line, request.partyId());
+            }
             LineValues value = validateLine(connection, line);
             values.add(value);
             amount = amount.add(value.amount);
@@ -458,7 +470,7 @@ public final class DocumentEngine {
         }
         BigDecimal amount = LineMath.amount(line.quantity(), line.rate(), line.discountBp());
         return new LineValues(line.itemId(), description, line.quantity(), line.rate(), line.discountBp(), amount,
-                warehouse);
+                warehouse, line.orderLineId());
     }
 
     private void requireWithinUncredited(Connection connection, Header note) throws SQLException {
@@ -524,6 +536,64 @@ public final class DocumentEngine {
         return value.stripTrailingZeros().toPlainString();
     }
 
+    /** A linked order line must be on a confirmed order of the same party, for the same item. */
+    private void requireOrderLine(Connection connection, LineRequest line, String partyId) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT o.status, o.party_id, l.item_id, o.number "
+                + "FROM " + orderLines + " l JOIN " + orders + " o ON o.id = l.order_id WHERE l.id = ?")) {
+            ps.setString(1, line.orderLineId());
+            try (ResultSet rows = ps.executeQuery()) {
+                if (!rows.next()) {
+                    throw new TradeException("No such order line: " + line.orderLineId());
+                }
+                if (!"CONFIRMED".equals(rows.getString(1))) {
+                    throw new TradeException("Order " + rows.getString(4) + " is not open for fulfilment");
+                }
+                if (!rows.getString(2).equals(partyId)) {
+                    throw new TradeException("An order is fulfilled for the party that placed it");
+                }
+                if (!rows.getString(3).equals(line.itemId())) {
+                    throw new TradeException("A line fulfilling an order must carry the ordered item");
+                }
+            }
+        }
+    }
+
+    /**
+     * P7-20: posting may not fulfil more than an order line has open, and an
+     * order closed or cancelled since the draft was made fulfils nothing more.
+     */
+    private void requireOrdersOpen(Connection connection, String documentId) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT o.number, o.status, ol.description, ol.quantity_e4,
+                       COALESCE((SELECT SUM(dl.quantity_e4) FROM %1$s dl JOIN %2$s d ON d.id = dl.document_id
+                                 WHERE dl.order_line_id = ol.id AND d.status = 'POSTED'), 0) AS fulfilled,
+                       mine.q
+                FROM (SELECT order_line_id, SUM(quantity_e4) AS q FROM %1$s
+                      WHERE document_id = ? AND order_line_id IS NOT NULL GROUP BY order_line_id) mine
+                JOIN %3$s ol ON ol.id = mine.order_line_id
+                JOIN %4$s o ON o.id = ol.order_id
+                WHERE o.status <> 'CONFIRMED' OR mine.q + 0 > ol.quantity_e4 - (SELECT COALESCE(SUM(dl.quantity_e4), 0)
+                      FROM %1$s dl JOIN %2$s d ON d.id = dl.document_id
+                      WHERE dl.order_line_id = ol.id AND d.status = 'POSTED')
+                LIMIT 1
+                """.formatted(lines, documents, orderLines, orders))) {
+            ps.setString(1, documentId);
+            try (ResultSet rows = ps.executeQuery()) {
+                if (rows.next()) {
+                    if (!"CONFIRMED".equals(rows.getString(2))) {
+                        throw new TradeException("Order " + rows.getString(1) + " is " + rows.getString(2)
+                                .toLowerCase(java.util.Locale.ROOT) + " and can no longer be fulfilled");
+                    }
+                    BigDecimal open = MoneyMapper.fromStored(rows.getLong(4) - rows.getLong(5), Scale.QUANTITY);
+                    throw new TradeException("Order " + rows.getString(1) + " has only " + plain(open) + " of \""
+                            + rows.getString(3) + "\" still open; this would fulfil "
+                            + plain(MoneyMapper.fromStored(rows.getLong(6), Scale.QUANTITY))
+                            + ". Put the extra on a separate line.");
+                }
+            }
+        }
+    }
+
     private BigDecimal creditedAgainst(Connection connection, String originalId) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement("SELECT COALESCE(SUM(total_e4), 0) FROM "
                 + documents + " WHERE original_document_id = ? AND status = 'POSTED'")) {
@@ -586,7 +656,7 @@ public final class DocumentEngine {
     private void insertLines(Connection connection, String documentId, List<LineValues> values) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement("INSERT INTO " + lines
                 + " (id, document_id, sequence, item_id, description, quantity_e4, rate_e4, discount_bp, "
-                + "amount_e4, warehouse_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                + "amount_e4, warehouse_id, order_line_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             int sequence = 1;
             for (LineValues line : values) {
                 ps.setString(1, Ids.newIdString());
@@ -599,6 +669,7 @@ public final class DocumentEngine {
                 ps.setInt(8, line.discountBp);
                 ps.setLong(9, MoneyMapper.toStored(line.amount, Scale.MONEY));
                 ps.setString(10, line.warehouseId);
+                ps.setString(11, line.orderLineId);
                 ps.executeUpdate();
             }
         }
@@ -631,7 +702,7 @@ public final class DocumentEngine {
     private List<DocumentLine> loadLines(Connection connection, String documentId) throws SQLException {
         List<DocumentLine> result = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement("SELECT id, sequence, item_id, description, "
-                + "quantity_e4, rate_e4, discount_bp, amount_e4, warehouse_id FROM " + lines
+                + "quantity_e4, rate_e4, discount_bp, amount_e4, warehouse_id, order_line_id FROM " + lines
                 + " WHERE document_id = ? ORDER BY sequence")) {
             ps.setString(1, documentId);
             try (ResultSet rows = ps.executeQuery()) {
@@ -639,7 +710,8 @@ public final class DocumentEngine {
                     result.add(new DocumentLine(rows.getString(1), rows.getInt(2), rows.getString(3),
                             rows.getString(4), MoneyMapper.fromStored(rows.getLong(5), Scale.QUANTITY),
                             MoneyMapper.fromStored(rows.getLong(6), Scale.MONEY), rows.getInt(7),
-                            MoneyMapper.fromStored(rows.getLong(8), Scale.MONEY), rows.getString(9)));
+                            MoneyMapper.fromStored(rows.getLong(8), Scale.MONEY), rows.getString(9),
+                            rows.getString(10)));
                 }
             }
         }

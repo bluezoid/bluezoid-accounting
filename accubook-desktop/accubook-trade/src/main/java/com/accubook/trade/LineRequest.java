@@ -10,9 +10,16 @@ import java.math.BigDecimal;
  * @param description shown on the document; defaults to the item's name
  * @param discountBp  basis points: 1000 is 10%
  * @param warehouseId required for goods, refused for services and free text
+ * @param orderLineId the order line this line fulfils (P7-18), or null
  */
 public record LineRequest(String itemId, String description, BigDecimal quantity, BigDecimal rate,
-                          int discountBp, String warehouseId) {
+                          int discountBp, String warehouseId, String orderLineId) {
+
+    /** A line that fulfils no order. */
+    public LineRequest(String itemId, String description, BigDecimal quantity, BigDecimal rate,
+                       int discountBp, String warehouseId) {
+        this(itemId, description, quantity, rate, discountBp, warehouseId, null);
+    }
 
     /** A free-text line - a service, a charge - with no item and no stock. */
     public static LineRequest text(String description, BigDecimal quantity, BigDecimal rate) {
