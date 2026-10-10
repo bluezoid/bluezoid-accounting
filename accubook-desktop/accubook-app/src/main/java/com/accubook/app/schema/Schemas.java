@@ -85,7 +85,8 @@ public final class Schemas {
     public static List<Migration> companyDatabase() {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
                 COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
-                COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION);
+                COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION,
+                COMPANY_V10_GST_REGISTRATION);
     }
 
     /**
@@ -1338,5 +1339,39 @@ public final class Schemas {
             ) STRICT;
 
             CREATE INDEX idx_valuation_run_date ON valuation_run (run_date, status);
+            """);
+
+    /**
+     * Phase 9a: the company's GST registration, effective-dated. Kernel.
+     *
+     * <p>A company registers, moves between regular and composition schemes, or
+     * cancels its registration from a date; every document is taxed under the
+     * registration in force on its date. Rows are appended, never edited, so a
+     * past document's basis never changes.
+     */
+    private static final Migration COMPANY_V10_GST_REGISTRATION = new Migration(10, "GST registration", """
+            CREATE TABLE gst_registration (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                effective_from  TEXT    NOT NULL UNIQUE,
+                scheme          TEXT    NOT NULL CHECK (scheme IN ('REGULAR', 'COMPOSITION', 'UNREGISTERED')),
+                gstin           TEXT,
+                -- The supplier's state: decides intra- or inter-state supply.
+                state_code      TEXT    NOT NULL,
+                -- The rule pack the registration was validated against.
+                rule_pack_version TEXT  NOT NULL,
+                created_at      INTEGER NOT NULL,
+                CHECK ((scheme = 'UNREGISTERED') = (gstin IS NULL)),
+                CHECK (gstin IS NULL OR substr(gstin, 1, 2) = state_code)
+            ) STRICT;
+
+            CREATE TRIGGER gst_registration_no_update BEFORE UPDATE ON gst_registration
+            BEGIN
+                SELECT RAISE(ABORT, 'A GST registration is never edited; record a new one from a later date');
+            END;
+
+            CREATE TRIGGER gst_registration_no_delete BEFORE DELETE ON gst_registration
+            BEGIN
+                SELECT RAISE(ABORT, 'A GST registration is never deleted');
+            END;
             """);
 }

@@ -33,7 +33,7 @@ public final class TableOwners {
     public static final Set<String> KERNEL = Set.of(
             // company.db
             "company_info", "fiscal_year", "ledger_group", "ledger", "voucher_type",
-            "number_counter", "voucher", "voucher_entry", "audit_log", "party",
+            "number_counter", "voucher", "voucher_entry", "audit_log", "party", "gst_registration",
             // app.db
             "company", "app_metadata", "rule_pack");
 

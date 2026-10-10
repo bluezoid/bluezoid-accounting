@@ -8,6 +8,7 @@
   <dependencies>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-persistence</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
     <dependency>
       <groupId>net.jqwik</groupId><artifactId>jqwik</artifactId>
       <scope>test</scope>

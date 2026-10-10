@@ -10,6 +10,7 @@
 module accubook.tax {
     requires accubook.platform;
     requires accubook.persistence;
+    requires transitive accubook.module.api;
     requires java.sql;
 
     exports com.accubook.tax;
