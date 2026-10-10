@@ -54,6 +54,7 @@ public final class DocumentEngine {
 
     private final String documents;
     private final String lines;
+    private final String allocations;
 
     public DocumentEngine(DocumentKind.Side side, ModuleId module, ModuleTransactions transactions,
                           EntitlementGuard entitlement, TransactionalPosting posting,
@@ -67,6 +68,7 @@ public final class DocumentEngine {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.documents = side.tablePrefix() + "_document";
         this.lines = side.tablePrefix() + "_document_line";
+        this.allocations = side.tablePrefix() + "_allocation";
     }
 
     // ================================================================ drafts
@@ -208,8 +210,45 @@ public final class DocumentEngine {
                 ps.setString(5, documentId);
                 ps.executeUpdate();
             }
+            if (doc.kind.isNote()) {
+                applyNoteToOriginal(connection, doc);
+            }
         });
         return find(documentId).orElseThrow();
+    }
+
+    /**
+     * P7-13: a posted note reduces its original document's outstanding at once,
+     * up to what is still owed on it. If the original was already paid, the rest
+     * stays as an unallocated credit for the party - to be applied to another
+     * document or refunded.
+     */
+    private void applyNoteToOriginal(Connection connection, Header note) throws SQLException {
+        long outstandingE4;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT d.total_e4 - COALESCE((SELECT SUM(amount_e4) "
+                + "FROM " + allocations + " WHERE document_id = d.id AND removed_date IS NULL), 0) FROM "
+                + documents + " d WHERE d.id = ?")) {
+            ps.setString(1, note.originalId);
+            try (ResultSet rows = ps.executeQuery()) {
+                rows.next();
+                outstandingE4 = rows.getLong(1);
+            }
+        }
+        long apply = Math.min(outstandingE4, MoneyMapper.toStored(note.total, Scale.MONEY));
+        if (apply <= 0) {
+            return;
+        }
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO " + allocations
+                + " (id, source_type, source_id, document_id, amount_e4, effective_date, created_at) "
+                + "VALUES (?, 'NOTE', ?, ?, ?, ?, ?)")) {
+            ps.setString(1, Ids.newIdString());
+            ps.setString(2, note.id);
+            ps.setString(3, note.originalId);
+            ps.setLong(4, apply);
+            ps.setString(5, note.date.toString());
+            ps.setLong(6, now());
+            ps.executeUpdate();
+        }
     }
 
     /**
@@ -239,6 +278,25 @@ public final class DocumentEngine {
                                 + ". Cancel that note first.");
                     }
                 }
+            }
+            if (cancellationDate.isBefore(doc.date)) {
+                throw new TradeException("A document cannot be cancelled before its own date");
+            }
+            try (PreparedStatement ps = connection.prepareStatement("SELECT EXISTS (SELECT 1 FROM " + allocations
+                    + " WHERE document_id = ? AND removed_date IS NULL)")) {
+                ps.setString(1, documentId);
+                try (ResultSet rows = ps.executeQuery()) {
+                    rows.next();
+                    if (rows.getInt(1) == 1) {
+                        throw new TradeException(doc.number + " has payments applied to it. Remove those "
+                                + "allocations, or cancel the receipt, before cancelling it.");
+                    }
+                }
+            }
+            if (doc.kind.isNote()) {
+                // The note's own automatic allocation goes with it, dated today.
+                SettlementEngine.removeAllocationsOfSource(connection, allocations, Allocation.SourceType.NOTE,
+                        documentId, cancellationDate, "Note cancelled: " + reason.strip());
             }
             Lookups.FiscalYearRow year = Lookups.fiscalYearFor(connection, cancellationDate);
             List<DocumentLine> docLines = loadLines(connection, documentId);
@@ -335,6 +393,9 @@ public final class DocumentEngine {
             }
             if (!original.partyId.equals(request.partyId())) {
                 throw new TradeException("A note is for the same party as the document it corrects");
+            }
+            if (request.date().isBefore(original.date)) {
+                throw new TradeException("A note cannot be dated before " + original.number + ", which it corrects");
             }
             if (original.id.equals(selfId)) {
                 throw new TradeException("A document cannot correct itself");
