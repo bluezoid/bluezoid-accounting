@@ -439,3 +439,47 @@ Not in P7d: TDS netting and TCS (P9), refunds of a party's credit balance
 (record as a payment to a customer / receipt from a vendor — a later decision),
 bank reconciliation (P10), cheque bounce workflow beyond cancellation.
 
+---
+
+## 14. P7e detailed design — quotations and orders
+
+**Status:** DESIGN — awaiting P7-18…P7-21.
+
+### 14.1 Reference research
+
+| ID | Finding | Evidence |
+|---|---|---|
+| D-11 | SO/PO/quotation numbers derived from the last row's string, outside any transaction; a series silently restarts at 1. | `sales-orders/route.ts:113` |
+| **R-14** *(new)* | `SalesOrderItem.deliveredQty` exists and is **written by nothing**; SO → invoice copies no lines; an order can never become partially or fully delivered. | schema; FEATURE_PORTING_MATRIX §2 |
+| **R-15** *(new)* | A purchase order is received **all or nothing**: setting status `RECEIVED` books every ordered line into stock. A short delivery cannot be recorded. | `purchase-orders/[orderId]/route.ts:173-245` |
+| **R-16** *(new)* | Stock comes in only through PO receipt; a purchase **bill never moves stock**. A trader who buys without a purchase order never gets the goods into inventory. | `post-bill.ts` (no stock); 4 `stockMovement.create` sites |
+| keep | Quotation → order conversion refuses converted, rejected and expired quotations. | `quotations/[id]/convert/route.ts:30-37` |
+
+### 14.2 Our own gap
+`PlanCatalogue` knows `purchase-orders` requires `inventory`, but **no plan
+contains it** — no customer could ever be sold purchase orders (P7-21).
+
+### 14.3 Model
+- **Quotation** (sales) → **sales order** → **sales invoice**;
+  **purchase order** → **purchase bill**. A quotation may also go straight to an
+  invoice. All are commitments with **no ledger effect**; only the invoice or
+  bill posts and moves stock (P7-5 stands).
+- Order lines carry items (orders require inventory, B-7). Converting copies
+  lines into a draft invoice/bill linked line-by-line to the order; posting that
+  document fulfils those quantities. **Fulfilled quantity is derived** from
+  posted, uncancelled linked lines — never a stored counter that nothing updates
+  (R-14).
+- Numbers `QT/26-27/00001`, `SO/…`, `PO/…` from `number_counter` inside the
+  transaction, allocated on confirmation (fixes D-11, follows P7-8).
+- Tables owned by `sales-orders` / `purchase-orders`; document lines gain a
+  nullable `order_line_id`.
+
+### 14.4 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P7-18** | How are orders fulfilled? | **Through the invoice or bill**: converting copies lines, posting moves stock and fulfils the order (partial deliveries = several invoices). Separate delivery challans / goods-receipt notes — which move stock *before* an invoice — deferred to a later decision; they need "invoice without stock" rules to avoid counting goods twice. |
+| **P7-19** | Quotation lifecycle | `DRAFT → SENT → ACCEPTED / REJECTED`, then `CONVERTED`; **expiry derived** from the valid-until date, never stored. Converted, rejected or expired quotations cannot be converted. A quotation may convert to an order or directly to an invoice. |
+| **P7-20** | Over-delivery and leftovers | An invoice may **not** fulfil more than an order line has open; extra goods go on a separate, unlinked line. A partly fulfilled order can be **short-closed** with a reason, which ends its open quantity. |
+| **P7-21** | Which plans get purchase orders? | **Professional and Enterprise, alongside sales orders** — both need inventory, and a trader who orders from customers usually orders from suppliers. Changes the approved B-7 matrix, so it is yours. |
+
