@@ -443,7 +443,7 @@ bank reconciliation (P10), cheque bounce workflow beyond cancellation.
 
 ## 14. P7e detailed design — quotations and orders
 
-**Status:** DESIGN — awaiting P7-18…P7-21.
+**Status:** APPROVED 2026-10-10 (P7-18…P7-21 as recommended).
 
 ### 14.1 Reference research
 

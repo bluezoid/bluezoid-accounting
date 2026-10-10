@@ -64,6 +64,7 @@ nullable, verified.
 | `taxation-returns` | **add-on** | **add-on** | ✓ | ✅ **B-7 RESOLVED** — purchasable at any tier. GST/TDS *computation* is kernel (§5) |
 | `inventory` | ✗ | ✓ | ✓ | Services businesses do not need it |
 | `sales-orders` | ✗ | ✓ | ✓ | Requires inventory |
+| `purchase-orders` | ✗ | ✓ | ✓ | Requires inventory · *added 2026-10-10 (P7-21); previously in no plan* |
 | `banking` | ✗ | ✓ | ✓ | Reconciliation is a step up |
 | `hr` | ✗ | ✗ | ✓ | |
 | `payroll` | ✗ | ✗ | ✓ | Requires `hr`; also gated on B-5 |

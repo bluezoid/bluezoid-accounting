@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-17 (2026-10-10).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21 (2026-10-10).
 
 **Still open:** B-2 · B-4 · B-5 · I-1…I-3, I-6…I-18 · N-2…N-9.
 
@@ -310,6 +310,18 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P7-5 Stock coupling:** posting an invoice/bill moves stock in the same
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
+
+## P7-18…P7-21 · P7e order rules — ✅ **APPROVED 2026-10-10**
+
+> All as recommended in `PHASE_7_DESIGN.md` §14.4.
+>
+> - **P7-18:** orders are fulfilled through invoices and bills; posting moves
+>   stock and fulfils the linked order lines. Delivery challans / GRNs deferred.
+> - **P7-19:** quotation `DRAFT → SENT → ACCEPTED/REJECTED → CONVERTED`; expiry
+>   derived from valid-until; converts to an order or directly to an invoice.
+> - **P7-20:** no over-fulfilment of an order line; short-close with a reason.
+> - **P7-21:** `purchase-orders` added to **Professional and Enterprise**.
+>   *Amends the B-7 matrix* (`P4_PLAN_MODULE_MATRIX.md`).
 
 ## P7-13…P7-17 · P7d settlement rules — ✅ **APPROVED 2026-10-10**
 
