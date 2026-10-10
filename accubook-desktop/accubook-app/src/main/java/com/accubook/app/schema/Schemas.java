@@ -1234,6 +1234,13 @@ public final class Schemas {
      * <p>All owned by {@code inventory}.
      */
     private static final Migration COMPANY_V9_VALUATION = new Migration(9, "inventory valuation", """
+            -- A movement that undoes an earlier one - a sales return, a purchase
+            -- return, a cancellation - is valued at the cost of what it undoes.
+            -- The caller names that source; inventory never reads the documents'
+            -- own tables to find it.
+            ALTER TABLE stock_movement ADD COLUMN cost_source_type TEXT;
+            ALTER TABLE stock_movement ADD COLUMN cost_source_id TEXT;
+
             -- P8-1: weighted average (moving, P8-2) or FIFO; LIFO is not permitted (AS 2).
             ALTER TABLE item ADD COLUMN costing_method TEXT NOT NULL DEFAULT 'WEIGHTED_AVERAGE'
                 CHECK (costing_method IN ('WEIGHTED_AVERAGE', 'FIFO'));

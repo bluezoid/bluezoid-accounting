@@ -49,7 +49,8 @@ final class StockWriter {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO stock_movement (id, item_id, movement_type, from_warehouse_id, "
                         + "to_warehouse_id, quantity_e4, unit_cost_e4, movement_date, source_type, "
-                        + "source_id, narration, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                        + "source_id, narration, created_at, cost_source_type, cost_source_id) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             ps.setString(1, id);
             ps.setString(2, request.itemId());
             ps.setString(3, request.type().name());
@@ -66,6 +67,18 @@ final class StockWriter {
             ps.setString(10, request.sourceId());
             ps.setString(11, request.narration());
             ps.setLong(12, now);
+            ps.setString(13, request.costSourceType());
+            ps.setString(14, request.costSourceId());
+            ps.executeUpdate();
+        }
+
+        // Phase 8: cost the item from this movement's date (P8-3: a backdated
+        // movement re-costs everything after it), and mark any posted
+        // valuation it changes as stale.
+        Costing.recost(connection, request.itemId(), request.date());
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE valuation_run SET status = 'STALE' WHERE status = 'CURRENT' AND run_date >= ?")) {
+            ps.setString(1, request.date().toString());
             ps.executeUpdate();
         }
         return id;

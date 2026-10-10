@@ -11,6 +11,9 @@ import java.util.Objects;
  *                   valuation in P8 and read by nothing in P7. Optional.
  * @param sourceType with {@code sourceId}, the document that caused this
  *                   movement; both or neither
+ * @param costSourceType with {@code costSourceId}, the document whose movements
+ *                   this one undoes - a credit note's original invoice, a
+ *                   cancelled bill - so it is valued at their cost (P8)
  */
 public record MovementRequest(
         MovementType type,
@@ -22,9 +25,22 @@ public record MovementRequest(
         LocalDate date,
         String sourceType,
         String sourceId,
-        String narration) {
+        String narration,
+        String costSourceType,
+        String costSourceId) {
+
+    /** A movement that undoes nothing. */
+    public MovementRequest(MovementType type, String itemId, String fromWarehouseId, String toWarehouseId,
+                           BigDecimal quantity, BigDecimal unitCost, LocalDate date, String sourceType,
+                           String sourceId, String narration) {
+        this(type, itemId, fromWarehouseId, toWarehouseId, quantity, unitCost, date, sourceType, sourceId,
+                narration, null, null);
+    }
 
     public MovementRequest {
+        if ((costSourceType == null) != (costSourceId == null)) {
+            throw new InventoryException("A cost source needs both a type and an id");
+        }
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(itemId, "itemId");
         Objects.requireNonNull(quantity, "quantity");

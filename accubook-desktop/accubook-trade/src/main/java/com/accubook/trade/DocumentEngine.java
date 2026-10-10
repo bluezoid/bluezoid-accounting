@@ -240,8 +240,11 @@ public final class DocumentEngine {
 
             for (DocumentLine line : docLines) {
                 if (line.warehouseId() != null) {
+                    // A note's goods undo its original's: valued at that cost.
                     stockPort().move(connection, doc.kind.stockKind(), line.itemId(), line.warehouseId(),
-                            line.quantity(), unitCost(doc.kind, line), doc.date, doc.kind.name(), documentId, number);
+                            line.quantity(), unitCost(doc.kind, line), doc.date, doc.kind.name(), documentId, number,
+                            doc.kind.isNote() ? doc.kind.parent().name() : null,
+                            doc.kind.isNote() ? doc.originalId : null);
                 }
             }
 
@@ -355,9 +358,10 @@ public final class DocumentEngine {
 
             for (DocumentLine line : docLines) {
                 if (line.warehouseId() != null) {
+                    // Cancellation undoes this document's own movements, at their cost.
                     stockPort().move(connection, doc.kind.cancellationStockKind(), line.itemId(), line.warehouseId(),
                             line.quantity(), null, cancellationDate, doc.kind.name() + "_CANCEL", documentId,
-                            "Cancellation of " + doc.number);
+                            "Cancellation of " + doc.number, doc.kind.name(), documentId);
                 }
             }
 

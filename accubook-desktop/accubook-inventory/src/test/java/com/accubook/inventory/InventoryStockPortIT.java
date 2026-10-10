@@ -49,9 +49,9 @@ class InventoryStockPortIT {
                     assertThat(facts.unitDecimals()).isZero();
                 });
                 port.move(connection, StockPort.Kind.PURCHASE, pen.id(), main.id(), new BigDecimal("10"),
-                        new BigDecimal("5"), DAY, "PURCHASE_BILL", "pb-1", null);
+                        new BigDecimal("5"), DAY, "PURCHASE_BILL", "pb-1", null, null, null);
                 port.move(connection, StockPort.Kind.SALE, pen.id(), main.id(), new BigDecimal("4"),
-                        null, DAY, "SALES_INVOICE", "inv-1", null);
+                        null, DAY, "SALES_INVOICE", "inv-1", null, null, null);
                 return null;
             });
             assertThat(inventory.stockOf(pen.id(), main.id())).isEqualByComparingTo("6");
@@ -59,9 +59,9 @@ class InventoryStockPortIT {
             // A refusal inside the caller's transaction rolls back the caller's work too.
             assertThatThrownBy(() -> service.openCompanyTransactions().inTransaction(connection -> {
                 port.move(connection, StockPort.Kind.PURCHASE, pen.id(), main.id(), BigDecimal.ONE,
-                        null, DAY, null, null, null);
+                        null, DAY, null, null, null, null, null);
                 port.move(connection, StockPort.Kind.SALE, pen.id(), main.id(), new BigDecimal("100"),
-                        null, DAY, null, null, null);
+                        null, DAY, null, null, null, null, null);
                 return null;
             })).isInstanceOf(InventoryException.class);
             assertThat(inventory.stockOf(pen.id(), main.id())).isEqualByComparingTo("6");

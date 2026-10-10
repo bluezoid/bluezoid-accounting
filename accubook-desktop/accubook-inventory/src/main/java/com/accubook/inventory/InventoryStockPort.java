@@ -39,13 +39,14 @@ public final class InventoryStockPort implements StockPort {
 
     @Override
     public void move(Connection connection, Kind kind, String itemId, String warehouseId, BigDecimal quantity,
-                     BigDecimal unitCost, LocalDate date, String sourceType, String sourceId, String narration)
-            throws SQLException {
+                     BigDecimal unitCost, LocalDate date, String sourceType, String sourceId, String narration,
+                     String costSourceType, String costSourceId) throws SQLException {
         MovementType type = MovementType.valueOf(kind.name());
         MovementRequest request = new MovementRequest(type, itemId,
                 kind.bringsStockIn() ? null : warehouseId,
                 kind.bringsStockIn() ? warehouseId : null,
-                quantity, kind.bringsStockIn() ? unitCost : null, date, sourceType, sourceId, narration);
+                quantity, kind.bringsStockIn() ? unitCost : null, date, sourceType, sourceId, narration,
+                costSourceType, costSourceId);
         StockWriter.apply(connection, request, System.currentTimeMillis());
     }
 }

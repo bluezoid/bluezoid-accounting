@@ -42,13 +42,17 @@ public interface StockPort {
     /**
      * Record one movement and update quantities on hand.
      *
-     * @param warehouseId receiving warehouse for an incoming kind, issuing
-     *                    warehouse for an outgoing one
+     * @param warehouseId    receiving warehouse for an incoming kind, issuing
+     *                       warehouse for an outgoing one
+     * @param costSourceType with {@code costSourceId}: the document whose stock
+     *                       movements this one undoes (a credit note's invoice,
+     *                       a cancelled bill), so it is valued at their cost.
+     *                       Both null when it undoes nothing.
      * @throws RuntimeException if refused - e.g. it would take stock below zero
      */
     void move(Connection connection, Kind kind, String itemId, String warehouseId, BigDecimal quantity,
-              BigDecimal unitCost, LocalDate date, String sourceType, String sourceId, String narration)
-            throws SQLException;
+              BigDecimal unitCost, LocalDate date, String sourceType, String sourceId, String narration,
+              String costSourceType, String costSourceId) throws SQLException;
 
     /** The provider in this build, if the build contains inventory. */
     static Optional<StockPort> installed() {
