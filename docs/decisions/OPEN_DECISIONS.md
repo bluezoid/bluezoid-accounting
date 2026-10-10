@@ -554,6 +554,12 @@ as a rebuildable optimisation with a verification routine.
 The reference is in-memory at O(ledgers × entries). Scaled integers make SQL
 `GROUP BY` exact. **Recommendation: SQL.** Affects report parity tests.
 
+## V-1 · Rule-pack content verification — 🔴 **RELEASE GATE (P16)**
+The bundled rule pack's rates, thresholds and effective dates come from public
+secondary sources and are marked UNVERIFIED. A chartered accountant must verify
+them before release, and the development rule-pack signing keys must be
+replaced. See `PHASE_9_DESIGN.md` §5.
+
 ## I-6 · TDS surcharge base *(payroll / salary TDS — gates P15, not P9)*
 `calculateTDS` tests surcharge against **gross** `annualIncome`, not
 `taxableIncome`. Likely incorrect under the Act. **Needs a tax professional's

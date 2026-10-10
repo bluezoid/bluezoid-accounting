@@ -49,3 +49,22 @@
 | **P9-2** | Where a line's GST rate comes from | **The item carries its GST rate** (a slab from the rule pack: 0, 0.25, 3, 5, 12, 18, 28, plus cess), changed with an effective date, like Tally. A free-text line chooses one. **Every line has an explicit tax category** — taxable at a rate, nil-rated, exempt, or non-GST — so nothing is ever silently nil-rated. The 57-entry HSN list is suggestions only. |
 | **P9-3** | Scope of supplies in this phase | **In:** regular B2B and B2C, intra- and inter-state, reverse charge on purchases, composition, cess. **Out (later):** exports and SEZ (zero-rated with or without payment), e-commerce operator supplies, advances (GSTR-1 ATXP), GSTR-4. |
 | **P9-4** | Rule-pack delivery | A rule pack is a **signed file** (its own Ed25519 key pair with the same two-key rotation as licences). One ships inside the app; a newer one can be **imported offline** from a file. Online download arrives with the admin portal (P13). A pack can never change a posted document. |
+
+---
+
+## 5. Findings while preparing P9a (2026-10-10)
+
+| ID | Finding | Consequence |
+|---|---|---|
+| **R-17** *(new)* | The reference's `TDS_RULES`, labelled FY 2025-26, carries **superseded values**: 194J threshold ₹30k (₹50k from 1 Apr 2025), 194H ₹15k / 5% (₹20k; rate 2% from 1 Oct 2024), 194I rent ₹2.4L a year (₹50k **per month** from 1 Apr 2025), and **206C(1H) TCS still active** though withdrawn from 1 Apr 2025. | Never port the table as data. Rule-pack content is sourced and verified separately. |
+| GST 2.0 | From **22 Sep 2025** the 12% and 28% slabs were removed and a **40%** rate added; compensation cess ended except for tobacco products pending notification. | The slab set is effective-dated rule-pack data; P9-2's list was illustrative. |
+| Model | A **per-month** threshold (194I) cannot be expressed as "single / annual". | Threshold types: single transaction, annual aggregate, monthly, excess-only. |
+
+### V-1 · Rule-pack content must be verified before release
+Rates, thresholds and dates in the bundled pack come from public secondary
+sources (taxguru, incometaxindia.gov.in budget brief, cleartax and others) and
+are marked **UNVERIFIED** inside the pack. **A chartered accountant must verify
+the pack before any release (P16 gate)**, as must the development signing keys
+be replaced. The infrastructure — signing, effective dating, import — is what
+P9a builds and tests; the numbers are data and will change.
+
