@@ -55,13 +55,14 @@ class SchemaMigrationSafetyIT {
 
             assertThat(result.changed()).isTrue();
             // Migration 2 (P5) posting invariants; 3 (P6) account governance;
-            // 4 (P7a) parties; 5 (P7b) inventory; 6 (P7c) documents.
-            assertThat(result.toVersion()).isEqualTo(6);
+            // 4 (P7a) parties; 5 (P7b) inventory; 6 (P7c) documents; 7 (P7d) settlement.
+            assertThat(result.toVersion()).isEqualTo(7);
             assertThat(tables(database)).contains(
                     "company_info", "fiscal_year", "ledger_group", "ledger",
                     "voucher_type", "number_counter", "voucher", "voucher_entry", "audit_log",
                     "party", "unit", "item_category", "item", "warehouse", "stock", "stock_movement",
-                    "sales_document", "sales_document_line", "purchase_document", "purchase_document_line");
+                    "sales_document", "sales_document_line", "purchase_document", "purchase_document_line",
+                    "sales_settlement", "sales_allocation", "purchase_settlement", "purchase_allocation");
         }
     }
 

@@ -60,7 +60,7 @@ public final class Schemas {
     public static List<Migration> companyDatabase() {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
                 COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
-                COMPANY_V6_DOCUMENTS);
+                COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT);
     }
 
     /**
@@ -902,5 +902,149 @@ public final class Schemas {
               AND NOT EXISTS (SELECT 1 FROM ledger WHERE system_code = '%1$s');
 
             """.formatted(code, name, groupCode);
+    }
+
+    /**
+     * Phase 7d settlement: receipts and payments, and the allocations that say
+     * which documents they paid (P7-3).
+     *
+     * <p>An allocation moves no ledger balance - the receipt's voucher already
+     * did. It records <em>which</em> invoice was paid, so outstanding amounts are
+     * derived from it and never stored on the document (R-7). Its limits are
+     * enforced here as well as in the service, inside the same transaction as the
+     * insert (D-21: the reference checked over-allocation outside it).
+     */
+    private static final Migration COMPANY_V7_SETTLEMENT = new Migration(7, "receipts, payments and allocations",
+            settlementTables("sales") + settlementTables("purchase"));
+
+    private static String settlementTables(String side) {
+        return """
+            CREATE TABLE %1$s_settlement (
+                id                      TEXT    NOT NULL PRIMARY KEY,
+                -- P7-14: posted on entry, so always numbered.
+                number                  TEXT    NOT NULL UNIQUE,
+                party_id                TEXT    NOT NULL REFERENCES party (id),
+                settlement_date         TEXT    NOT NULL,
+                amount_e4               INTEGER NOT NULL CHECK (amount_e4 > 0 AND amount_e4 %% 100 = 0),
+                -- P7-16: a ledger in the Cash & Bank group.
+                account_ledger_id       TEXT    NOT NULL REFERENCES ledger (id),
+                mode                    TEXT    NOT NULL CHECK (mode IN ('CASH', 'BANK_TRANSFER', 'CHEQUE',
+                                            'UPI', 'CARD', 'NEFT', 'RTGS', 'OTHER')),
+                reference_no            TEXT,
+                instrument_date         TEXT,
+                status                  TEXT    NOT NULL DEFAULT 'POSTED' CHECK (status IN ('POSTED', 'CANCELLED')),
+                fiscal_year_id          TEXT    NOT NULL REFERENCES fiscal_year (id),
+                voucher_id              TEXT    NOT NULL REFERENCES voucher (id),
+                cancellation_voucher_id TEXT REFERENCES voucher (id),
+                cancellation_reason     TEXT,
+                narration               TEXT,
+                created_at              INTEGER NOT NULL,
+                updated_at              INTEGER NOT NULL,
+                CHECK ((status = 'CANCELLED') = (cancellation_voucher_id IS NOT NULL))
+            ) STRICT;
+
+            CREATE INDEX idx_%1$s_settlement_party ON %1$s_settlement (party_id, settlement_date);
+
+            CREATE TRIGGER %1$s_settlement_immutable
+            BEFORE UPDATE ON %1$s_settlement
+            WHEN NOT (OLD.status = 'POSTED' AND NEW.status = 'CANCELLED'
+                      AND NEW.number = OLD.number AND NEW.party_id = OLD.party_id
+                      AND NEW.amount_e4 = OLD.amount_e4 AND NEW.settlement_date = OLD.settlement_date
+                      AND NEW.account_ledger_id = OLD.account_ledger_id AND NEW.voucher_id = OLD.voucher_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'A receipt or payment cannot be changed; cancel it instead');
+            END;
+
+            CREATE TRIGGER %1$s_settlement_no_delete
+            BEFORE DELETE ON %1$s_settlement
+            BEGIN
+                SELECT RAISE(ABORT, 'A receipt or payment cannot be deleted; cancel it instead');
+            END;
+
+            CREATE TABLE %1$s_allocation (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                -- A receipt/payment, or a credit/debit note.
+                source_type     TEXT    NOT NULL CHECK (source_type IN ('SETTLEMENT', 'NOTE')),
+                source_id       TEXT    NOT NULL,
+                document_id     TEXT    NOT NULL REFERENCES %1$s_document (id),
+                amount_e4       INTEGER NOT NULL CHECK (amount_e4 > 0 AND amount_e4 %% 100 = 0),
+                -- The later of the source's and the document's dates: from when
+                -- the allocation counts in an as-of report (R-12).
+                effective_date  TEXT    NOT NULL,
+                created_at      INTEGER NOT NULL,
+                UNIQUE (source_type, source_id, document_id)
+            ) STRICT;
+
+            CREATE INDEX idx_%1$s_allocation_document ON %1$s_allocation (document_id);
+            CREATE INDEX idx_%1$s_allocation_source ON %1$s_allocation (source_type, source_id);
+
+            -- Allocations are added or removed, never edited.
+            CREATE TRIGGER %1$s_allocation_no_update BEFORE UPDATE ON %1$s_allocation
+            BEGIN
+                SELECT RAISE(ABORT, 'An allocation cannot be changed; remove it and allocate again');
+            END;
+
+            -- The target must be a posted invoice or bill, never a note.
+            CREATE TRIGGER %1$s_allocation_target BEFORE INSERT ON %1$s_allocation
+            WHEN NOT EXISTS (SELECT 1 FROM %1$s_document
+                             WHERE id = NEW.document_id AND status = 'POSTED'
+                               AND original_document_id IS NULL)
+            BEGIN
+                SELECT RAISE(ABORT, 'Only a posted invoice or bill can be allocated to');
+            END;
+
+            -- The source must exist, be posted, and belong to the same party.
+            CREATE TRIGGER %1$s_allocation_source BEFORE INSERT ON %1$s_allocation
+            WHEN NOT EXISTS (
+                SELECT 1 FROM %1$s_settlement s JOIN %1$s_document d ON d.id = NEW.document_id
+                WHERE NEW.source_type = 'SETTLEMENT' AND s.id = NEW.source_id
+                  AND s.status = 'POSTED' AND s.party_id = d.party_id
+                UNION ALL
+                SELECT 1 FROM %1$s_document n JOIN %1$s_document d ON d.id = NEW.document_id
+                WHERE NEW.source_type = 'NOTE' AND n.id = NEW.source_id AND n.status = 'POSTED'
+                  AND n.original_document_id IS NOT NULL AND n.party_id = d.party_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'An allocation needs a posted receipt, payment or note of the same party');
+            END;
+
+            -- A document cannot receive more than its total.
+            CREATE TRIGGER %1$s_allocation_document_limit BEFORE INSERT ON %1$s_allocation
+            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation WHERE document_id = NEW.document_id)
+                 + NEW.amount_e4 > (SELECT total_e4 FROM %1$s_document WHERE id = NEW.document_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'This would allocate more than the document total');
+            END;
+
+            -- A source cannot allocate more than it holds.
+            CREATE TRIGGER %1$s_allocation_source_limit BEFORE INSERT ON %1$s_allocation
+            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation
+                  WHERE source_type = NEW.source_type AND source_id = NEW.source_id) + NEW.amount_e4
+                 > CASE NEW.source_type
+                       WHEN 'SETTLEMENT' THEN (SELECT amount_e4 FROM %1$s_settlement WHERE id = NEW.source_id)
+                       ELSE (SELECT total_e4 FROM %1$s_document WHERE id = NEW.source_id)
+                   END
+            BEGIN
+                SELECT RAISE(ABORT, 'This would allocate more than the receipt, payment or note holds');
+            END;
+
+            -- Nothing allocated may be cancelled underneath its allocations
+            -- (P7-12): remove them first.
+            CREATE TRIGGER %1$s_settlement_cancel_unallocated
+            BEFORE UPDATE OF status ON %1$s_settlement
+            WHEN NEW.status = 'CANCELLED' AND EXISTS (SELECT 1 FROM %1$s_allocation
+                WHERE source_type = 'SETTLEMENT' AND source_id = OLD.id)
+            BEGIN
+                SELECT RAISE(ABORT, 'Remove this receipt or payment''s allocations before cancelling it');
+            END;
+
+            CREATE TRIGGER %1$s_document_cancel_unallocated
+            BEFORE UPDATE OF status ON %1$s_document
+            WHEN NEW.status = 'CANCELLED' AND EXISTS (SELECT 1 FROM %1$s_allocation
+                WHERE document_id = OLD.id OR (source_type = 'NOTE' AND source_id = OLD.id))
+            BEGIN
+                SELECT RAISE(ABORT, 'This document has allocations; remove them before cancelling');
+            END;
+
+            """.formatted(side);
     }
 }
