@@ -230,7 +230,7 @@ posting invariants asserted; ported posting tests green.
 **Exit:** invoice → receipt → ledger → statement reconciles exactly; a credit
 note **reduces** revenue and receivables.
 
-## Phase 8 — Perpetual inventory costing
+## Phase 8 — Inventory valuation ✅ COMPLETE 2026-10-10 (periodic 5a per B-1: persisted costing + posted closing stock; originally "perpetual inventory costing")
 **Blocked by: B-1 (perpetual confirmation), I-1 (methods), I-2 (granularity), I-3 (scrap)**
 
 ⚠️ Lands **after** documents exist, so COGS has something to relieve against.
