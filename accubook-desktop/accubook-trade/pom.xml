@@ -9,13 +9,9 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-accounting</artifactId></dependency>
-    <!-- Test only: real companies through CompanyService, with inventory as the stock port. -->
+    <!-- Test only: real companies through CompanyService. -->
     <dependency>
       <groupId>com.accubook</groupId><artifactId>accubook-app</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.accubook</groupId><artifactId>accubook-inventory</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -30,14 +26,12 @@
         <artifactId>maven-failsafe-plugin</artifactId>
         <configuration>
           <!--
-            The integration tests use inventory as the stock port and a second
-            Database handle to create parties. The library itself must never
-            read either module - stock comes through StockPort - so the reads
-            are granted to the test JVM only.
+            The integration tests open companies through CompanyService. The
+            library itself never reads accubook.app, so the read is granted to
+            the test JVM only. Tests that need inventory as well live in
+            accubook-integration-tests, which is not a JPMS module.
           -->
           <argLine>
-            --add-reads accubook.trade=accubook.inventory
-            --add-reads accubook.trade=accubook.persistence
             --add-reads accubook.trade=accubook.app
           </argLine>
         </configuration>

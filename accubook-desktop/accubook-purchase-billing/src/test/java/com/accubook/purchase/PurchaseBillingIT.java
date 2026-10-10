@@ -8,7 +8,6 @@ import com.accubook.module.EntitlementGuard;
 import com.accubook.module.ModuleRegistry;
 import com.accubook.module.ModuleState;
 import com.accubook.module.stock.StockPort;
-import com.accubook.persistence.connection.Database;
 import com.accubook.trade.Document;
 import com.accubook.trade.DocumentKind;
 import com.accubook.trade.DocumentStatus;
@@ -40,10 +39,7 @@ class PurchaseBillingIT {
                 ModuleRegistry.discover(List.of(new PurchaseBillingModule())), id -> ModuleState.ACTIVE)) {
             String companyId = service.createCompany("Asha Traders").id();
             service.openCompany(companyId);
-            Party party;
-            try (Database second = Database.open(dir.resolve("companies").resolve(companyId).resolve("company.db"))) {
-                party = new Parties(second).create("Mehta & Co", PartyRole.VENDOR, null, 0);
-            }
+            Party party = new Parties(service.openCompanyTransactions()).create("Mehta & Co", PartyRole.VENDOR, null, 0);
             PurchaseBilling module = new PurchaseBilling(service.openCompanyTransactions(),
                     new EntitlementGuard(service.moduleStates()));
 

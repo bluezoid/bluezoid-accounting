@@ -1,4 +1,12 @@
-package com.accubook.trade;
+package com.accubook.integration;
+
+import com.accubook.trade.Document;
+import com.accubook.trade.DocumentEngine;
+import com.accubook.trade.DocumentKind;
+import com.accubook.trade.DocumentStatus;
+import com.accubook.trade.DraftRequest;
+import com.accubook.trade.LineRequest;
+import com.accubook.trade.TradeException;
 
 import com.accubook.accounting.chart.TrialBalance;
 import com.accubook.accounting.chart.TrialBalanceQuery;
@@ -24,7 +32,6 @@ import com.accubook.module.ModuleNotWritableException;
 import com.accubook.module.ModuleRegistry;
 import com.accubook.module.ModuleState;
 import com.accubook.module.ModuleTransactions;
-import com.accubook.persistence.connection.Database;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,7 +72,6 @@ class DocumentEngineIT {
 
     private final Map<String, ModuleState> states = new HashMap<>();
     private CompanyService service;
-    private Database second;
     private ModuleTransactions transactions;
     private DocumentEngine sales;
     private DocumentEngine purchases;
@@ -91,9 +97,7 @@ class DocumentEngineIT {
                 new TransactionalPosting(guard, clock), Optional.of(new InventoryStockPort()), clock);
         inventory = new Inventory(transactions, guard, clock);
 
-        // Parties are kernel and need a Database; a second handle on the same file.
-        second = Database.open(dir.resolve("companies").resolve(companyId).resolve("company.db"));
-        Parties parties = new Parties(second);
+        Parties parties = new Parties(transactions);
         customer = parties.create("Mehta Stores", PartyRole.CUSTOMER,
                 new PartyProfile(null, null, null, null, null, null, null, null, null, null, null, 30), 0);
         vendor = parties.create("Rao Wholesale", PartyRole.VENDOR, null, 0);
@@ -107,7 +111,6 @@ class DocumentEngineIT {
 
     @AfterEach
     void tearDown() throws Exception {
-        second.close();
         service.close();
     }
 

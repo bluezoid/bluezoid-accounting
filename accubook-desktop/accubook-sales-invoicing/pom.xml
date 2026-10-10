@@ -21,7 +21,6 @@
         <configuration>
           <!-- Test only: a second Database handle creates the party. -->
           <argLine>
-            --add-reads accubook.sales.invoicing=accubook.persistence
             --add-reads accubook.sales.invoicing=accubook.app
           </argLine>
         </configuration>
