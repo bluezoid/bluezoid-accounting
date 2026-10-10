@@ -1,0 +1,96 @@
+accubook-rulepack-signature/1
+key=acb-rulepack-dev-primary
+signature=Q2K5xeCcbi/1FP4hBBon7ruWkvhzQMvti6uD7DYvebbSrpd5NH6Tr+iSLzZ9oHKanQ4yAY4mmqLlCjwrJcKQBg==
+---
+format=accubook-rulepack/1
+version=2025.10.1
+issued=2026-10-10
+# UNVERIFIED: compiled from public secondary sources for development. A
+# chartered accountant must verify every rate, threshold and date before any
+# release (OPEN_DECISIONS V-1). Do not treat as legal advice.
+status=UNVERIFIED
+source=https://www.incometaxindia.gov.in/w/brief-on-budget
+source=https://blog.tdsman.com/2025/03/tds-tcs-changes-w-e-f-1st-april-2025/
+source=https://taxguru.in/goods-and-service-tax/56th-gst-council-meeting-overview.html
+source=https://cleartax.in/s/gst-compensation-cess
+source=https://www.taxaj.com/learn/?p=843
+
+# GST state codes. UNION_TERRITORY = UTGST applies (no legislature).
+# Delhi, Puducherry and Jammu and Kashmir have legislatures: SGST, so STATE.
+[states]
+01|Jammu and Kashmir|STATE
+02|Himachal Pradesh|STATE
+03|Punjab|STATE
+04|Chandigarh|UNION_TERRITORY
+05|Uttarakhand|STATE
+06|Haryana|STATE
+07|Delhi|STATE
+08|Rajasthan|STATE
+09|Uttar Pradesh|STATE
+10|Bihar|STATE
+11|Sikkim|STATE
+12|Arunachal Pradesh|STATE
+13|Nagaland|STATE
+14|Manipur|STATE
+15|Mizoram|STATE
+16|Tripura|STATE
+17|Meghalaya|STATE
+18|Assam|STATE
+19|West Bengal|STATE
+20|Jharkhand|STATE
+21|Odisha|STATE
+22|Chhattisgarh|STATE
+23|Madhya Pradesh|STATE
+24|Gujarat|STATE
+25|Daman and Diu (merged into 26 in 2020)|UNION_TERRITORY
+26|Dadra and Nagar Haveli and Daman and Diu|UNION_TERRITORY
+27|Maharashtra|STATE
+28|Andhra Pradesh (before 2014 reorganisation)|STATE
+29|Karnataka|STATE
+30|Goa|STATE
+31|Lakshadweep|UNION_TERRITORY
+32|Kerala|STATE
+33|Tamil Nadu|STATE
+34|Puducherry|STATE
+35|Andaman and Nicobar Islands|UNION_TERRITORY
+36|Telangana|STATE
+37|Andhra Pradesh|STATE
+38|Ladakh|UNION_TERRITORY
+97|Other Territory|SPECIAL
+99|Centre Jurisdiction|SPECIAL
+
+# Combined GST rates permitted. GST 2.0 (22 Sep 2025) removed 12% and 28%
+# and introduced 40%; tobacco keeps compensation cess pending notification.
+[gst-slabs]
+2017-07-01|2025-09-21|0,0.25,1.5,3,5,12,18,28
+2025-09-22||0,0.25,1.5,3,5,18,40
+
+[thresholds]
+B2CL_INVOICE|2017-07-01|2024-07-31|250000
+B2CL_INVOICE|2024-08-01||100000
+EWAY_BILL|2018-04-01||50000
+EINVOICE_TURNOVER|2023-08-01||50000000
+COMPOSITION_LIMIT|2019-04-01||15000000
+COMPOSITION_LIMIT_SPECIAL_STATES|2019-04-01||7500000
+
+# section|from|to|rate %|no-PAN rate %|threshold type|single|annual|description
+[tds]
+194C-IND|2020-04-01||1|20|SINGLE_OR_ANNUAL|30000|100000|Contractors - individual or HUF
+194C-OTH|2020-04-01||2|20|SINGLE_OR_ANNUAL|30000|100000|Contractors - others
+194H|2020-04-01|2024-09-30|5|20|SINGLE_OR_ANNUAL||15000|Commission or brokerage
+194H|2024-10-01|2025-03-31|2|20|SINGLE_OR_ANNUAL||15000|Commission or brokerage
+194H|2025-04-01||2|20|SINGLE_OR_ANNUAL||20000|Commission or brokerage
+194I-LAND|2020-04-01|2025-03-31|10|20|SINGLE_OR_ANNUAL||240000|Rent - land, building, furniture
+194I-LAND|2025-04-01||10|20|MONTHLY|50000||Rent - land, building, furniture
+194I-PM|2020-04-01|2025-03-31|2|20|SINGLE_OR_ANNUAL||240000|Rent - plant and machinery
+194I-PM|2025-04-01||2|20|MONTHLY|50000||Rent - plant and machinery
+194J-PROF|2020-04-01|2025-03-31|10|20|SINGLE_OR_ANNUAL|30000||Professional fees
+194J-PROF|2025-04-01||10|20|SINGLE_OR_ANNUAL|50000||Professional fees
+194J-TECH|2020-04-01|2025-03-31|2|20|SINGLE_OR_ANNUAL|30000||Fees for technical services
+194J-TECH|2025-04-01||2|20|SINGLE_OR_ANNUAL|50000||Fees for technical services
+194Q|2021-07-01||0.1|5|ANNUAL_EXCESS||5000000|Purchase of goods
+194O|2020-10-01|2024-09-30|1|5|SINGLE_OR_ANNUAL||500000|E-commerce operator
+194O|2024-10-01||0.1|5|SINGLE_OR_ANNUAL||500000|E-commerce operator
+
+[tcs]
+206C(1H)|2020-10-01|2025-03-31|0.1|1|ANNUAL_EXCESS||5000000|Sale of goods (withdrawn from 1 Apr 2025)
