@@ -107,12 +107,17 @@ class SettlementSchemaIT {
     void lifecycle() throws SQLException {
         exec(allocate("a1", "r1", "inv", 100));
         assertThatThrownBy(() -> exec("UPDATE sales_allocation SET amount_e4 = 200")).hasMessageContaining("cannot be changed");
+        assertThatThrownBy(() -> exec(allocate("a2", "r1", "inv", 100)))
+                .as("one live allocation per source and document").hasMessageContaining("UNIQUE");
         assertThatThrownBy(() -> exec("UPDATE sales_settlement SET status = 'CANCELLED', cancellation_voucher_id = 'v1'"))
                 .hasMessageContaining("allocations");
         assertThatThrownBy(() -> exec("UPDATE sales_document SET status = 'CANCELLED', cancellation_voucher_id = 'v1'"))
                 .hasMessageContaining("allocations");
 
-        exec("DELETE FROM sales_allocation");
+        assertThatThrownBy(() -> exec("DELETE FROM sales_allocation")).hasMessageContaining("never deleted");
+        exec("UPDATE sales_allocation SET removed_date = '2026-05-03', removal_reason = 'Cheque bounced'");
+        assertThatThrownBy(() -> exec("UPDATE sales_allocation SET removed_date = NULL, removal_reason = NULL"))
+                .as("a removal is not undone").hasMessageContaining("cannot be changed");
         assertThatCode(() -> exec("UPDATE sales_settlement SET status = 'CANCELLED', cancellation_voucher_id = 'v1'"))
                 .doesNotThrowAnyException();
     }

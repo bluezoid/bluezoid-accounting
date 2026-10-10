@@ -971,17 +971,35 @@ public final class Schemas {
                 -- The later of the source's and the document's dates: from when
                 -- the allocation counts in an as-of report (R-12).
                 effective_date  TEXT    NOT NULL,
+                -- Removal is recorded, never a delete: an as-of report for a
+                -- date before the removal must still see the allocation (R-12).
+                removed_date    TEXT,
+                removal_reason  TEXT,
                 created_at      INTEGER NOT NULL,
-                UNIQUE (source_type, source_id, document_id)
+                CHECK ((removed_date IS NULL) = (removal_reason IS NULL)),
+                CHECK (removed_date IS NULL OR removed_date >= effective_date)
             ) STRICT;
+
+            -- One live allocation per source and document; removed ones stay as history.
+            CREATE UNIQUE INDEX idx_%1$s_allocation_live ON %1$s_allocation (source_type, source_id, document_id)
+                WHERE removed_date IS NULL;
 
             CREATE INDEX idx_%1$s_allocation_document ON %1$s_allocation (document_id);
             CREATE INDEX idx_%1$s_allocation_source ON %1$s_allocation (source_type, source_id);
 
-            -- Allocations are added or removed, never edited.
+            -- Allocations are added or marked removed, never edited or deleted.
             CREATE TRIGGER %1$s_allocation_no_update BEFORE UPDATE ON %1$s_allocation
+            WHEN NOT (OLD.removed_date IS NULL AND NEW.removed_date IS NOT NULL
+                      AND NEW.source_type = OLD.source_type AND NEW.source_id = OLD.source_id
+                      AND NEW.document_id = OLD.document_id AND NEW.amount_e4 = OLD.amount_e4
+                      AND NEW.effective_date = OLD.effective_date)
             BEGIN
                 SELECT RAISE(ABORT, 'An allocation cannot be changed; remove it and allocate again');
+            END;
+
+            CREATE TRIGGER %1$s_allocation_no_delete BEFORE DELETE ON %1$s_allocation
+            BEGIN
+                SELECT RAISE(ABORT, 'An allocation is removed, never deleted');
             END;
 
             -- The target must be a posted invoice or bill, never a note.
@@ -1009,7 +1027,8 @@ public final class Schemas {
 
             -- A document cannot receive more than its total.
             CREATE TRIGGER %1$s_allocation_document_limit BEFORE INSERT ON %1$s_allocation
-            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation WHERE document_id = NEW.document_id)
+            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation
+                  WHERE document_id = NEW.document_id AND removed_date IS NULL)
                  + NEW.amount_e4 > (SELECT total_e4 FROM %1$s_document WHERE id = NEW.document_id)
             BEGIN
                 SELECT RAISE(ABORT, 'This would allocate more than the document total');
@@ -1018,7 +1037,8 @@ public final class Schemas {
             -- A source cannot allocate more than it holds.
             CREATE TRIGGER %1$s_allocation_source_limit BEFORE INSERT ON %1$s_allocation
             WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation
-                  WHERE source_type = NEW.source_type AND source_id = NEW.source_id) + NEW.amount_e4
+                  WHERE source_type = NEW.source_type AND source_id = NEW.source_id AND removed_date IS NULL)
+                 + NEW.amount_e4
                  > CASE NEW.source_type
                        WHEN 'SETTLEMENT' THEN (SELECT amount_e4 FROM %1$s_settlement WHERE id = NEW.source_id)
                        ELSE (SELECT total_e4 FROM %1$s_document WHERE id = NEW.source_id)
@@ -1027,12 +1047,12 @@ public final class Schemas {
                 SELECT RAISE(ABORT, 'This would allocate more than the receipt, payment or note holds');
             END;
 
-            -- Nothing allocated may be cancelled underneath its allocations
-            -- (P7-12): remove them first.
+            -- Nothing allocated may be cancelled underneath its live
+            -- allocations (P7-12): remove them first.
             CREATE TRIGGER %1$s_settlement_cancel_unallocated
             BEFORE UPDATE OF status ON %1$s_settlement
             WHEN NEW.status = 'CANCELLED' AND EXISTS (SELECT 1 FROM %1$s_allocation
-                WHERE source_type = 'SETTLEMENT' AND source_id = OLD.id)
+                WHERE source_type = 'SETTLEMENT' AND source_id = OLD.id AND removed_date IS NULL)
             BEGIN
                 SELECT RAISE(ABORT, 'Remove this receipt or payment''s allocations before cancelling it');
             END;
@@ -1040,7 +1060,8 @@ public final class Schemas {
             CREATE TRIGGER %1$s_document_cancel_unallocated
             BEFORE UPDATE OF status ON %1$s_document
             WHEN NEW.status = 'CANCELLED' AND EXISTS (SELECT 1 FROM %1$s_allocation
-                WHERE document_id = OLD.id OR (source_type = 'NOTE' AND source_id = OLD.id))
+                WHERE removed_date IS NULL
+                  AND (document_id = OLD.id OR (source_type = 'NOTE' AND source_id = OLD.id)))
             BEGIN
                 SELECT RAISE(ABORT, 'This document has allocations; remove them before cancelling');
             END;
