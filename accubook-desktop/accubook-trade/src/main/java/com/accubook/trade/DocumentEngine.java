@@ -103,8 +103,46 @@ public final class DocumentEngine {
                 ps.executeUpdate();
             }
             insertLines(connection, id, draft.lines);
+            if (request.quotationId() != null) {
+                convertQuotation(connection, request.quotationId(), request.partyId(), request.date());
+            }
         });
         return find(id).orElseThrow();
+    }
+
+    /**
+     * P7-19: an invoice made from a quotation marks it converted in the same
+     * transaction, so a draft can never exist for a quotation still shown as
+     * open. Only a sent or accepted quotation, not expired on the invoice date,
+     * of the same party.
+     */
+    private static void convertQuotation(Connection connection, String quotationId, String partyId, LocalDate on)
+            throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT status, valid_until, party_id, number FROM sales_quotation WHERE id = ?")) {
+            ps.setString(1, quotationId);
+            try (ResultSet rows = ps.executeQuery()) {
+                if (!rows.next()) {
+                    throw new TradeException("No such quotation: " + quotationId);
+                }
+                String status = rows.getString(1);
+                if (!"SENT".equals(status) && !"ACCEPTED".equals(status)) {
+                    throw new TradeException("Quotation " + rows.getString(4) + " is "
+                            + status.toLowerCase(java.util.Locale.ROOT) + " and cannot be converted");
+                }
+                if (on.isAfter(LocalDate.parse(rows.getString(2)))) {
+                    throw new TradeException("Quotation " + rows.getString(4) + " expired on " + rows.getString(2));
+                }
+                if (!partyId.equals(rows.getString(3))) {
+                    throw new TradeException("An invoice from a quotation is for the quotation's party");
+                }
+            }
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE sales_quotation SET status = 'CONVERTED' WHERE id = ?")) {
+            ps.setString(1, quotationId);
+            ps.executeUpdate();
+        }
     }
 
     /** Replace a draft's contents. Refused once posted - the schema refuses it too. */
@@ -115,6 +153,11 @@ public final class DocumentEngine {
             requireDraft(current);
             if (current.kind != request.kind()) {
                 throw new TradeException("A draft keeps its kind; create a new document instead");
+            }
+            if (side == DocumentKind.Side.SALES && !java.util.Objects.equals(request.quotationId(),
+                    Lookups.single(connection, "SELECT COALESCE(quotation_id, '') FROM " + documents + " WHERE id = ?",
+                            documentId, "No such document").transform(q -> q.isEmpty() ? null : q))) {
+                throw new TradeException("A draft keeps the quotation it was made from");
             }
             Draft draft = validate(connection, request, documentId);
             try (PreparedStatement ps = connection.prepareStatement("DELETE FROM " + lines + " WHERE document_id = ?")) {
