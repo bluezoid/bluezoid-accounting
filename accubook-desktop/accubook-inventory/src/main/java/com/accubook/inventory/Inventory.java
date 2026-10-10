@@ -402,7 +402,8 @@ public final class Inventory {
 
     /**
      * P8-4: value all stock on {@code date} and post the difference from the
-     * Stock-in-Hand balance on that date as a closing-stock voucher:
+     * Stock-in-Hand balance on that date, rounded to the paisa (P8-6), as a
+     * closing-stock voucher:
      * an increase Dr Stock-in-Hand / Cr Change in Stock, a decrease the reverse.
      * Change in Stock sits in Direct Expenses, so gross profit is
      * opening + purchases − closing.
@@ -443,8 +444,13 @@ public final class Inventory {
                 }
             }
 
+            // P8-6: the books carry whole paise. The valuation keeps every digit;
+            // the voucher posts the value rounded half-up to the paisa. Each run
+            // posts against the ledger balance, so the sub-paisa difference never
+            // accumulates.
+            long postedValue = Math.floorDiv(value + 50, 100) * 100;
             String voucherId = null;
-            long delta = value - balance;
+            long delta = postedValue - balance;
             if (delta != 0) {
                 BigDecimal amount = MoneyMapper.fromStored(Math.abs(delta), Scale.MONEY);
                 List<com.accubook.accounting.posting.EntryLine> entries = delta > 0
