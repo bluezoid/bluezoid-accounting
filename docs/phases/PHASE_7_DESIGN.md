@@ -380,7 +380,7 @@ movements, in one transaction. The number stays used.
 
 ## 13. P7d detailed design — settlement, outstanding, aging, statements
 
-**Status:** DESIGN — awaiting P7-13…P7-17.
+**Status:** APPROVED 2026-10-10 (P7-13…P7-17 as recommended).
 
 ### 13.1 Reference research
 

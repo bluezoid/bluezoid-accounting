@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-17 (2026-10-10).
 
 **Still open:** B-2 · B-4 · B-5 · I-1…I-3, I-6…I-18 · N-2…N-9.
 
@@ -310,6 +310,22 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P7-5 Stock coupling:** posting an invoice/bill moves stock in the same
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
+
+## P7-13…P7-17 · P7d settlement rules — ✅ **APPROVED 2026-10-10**
+
+> All as recommended in `PHASE_7_DESIGN.md` §13.4.
+>
+> - **P7-13:** a posted note is allocated automatically to its original
+>   document, up to that document's outstanding; any excess is an unallocated
+>   credit for the party.
+> - **P7-14:** receipts and payments are posted on entry; corrected by
+>   cancellation, never edited.
+> - **P7-15:** aging by days past due date (document date when none);
+>   buckets not due / 1–30 / 31–60 / 61–90 / over 90.
+> - **P7-16:** money moves through any active ledger in the Cash & Bank group
+>   until banking (P10).
+> - **P7-17:** a note may not return more of an item than the original carried,
+>   less earlier notes.
 
 ## P7-8…P7-12 · P7c document rules — ✅ **APPROVED 2026-10-09**
 
