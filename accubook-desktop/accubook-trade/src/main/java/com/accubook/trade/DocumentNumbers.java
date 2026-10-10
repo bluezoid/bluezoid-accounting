@@ -22,14 +22,19 @@ public final class DocumentNumbers {
     }
 
     public static String format(DocumentKind kind, LocalDate fiscalYearStart, LocalDate fiscalYearEnd, long sequence) {
+        return format(kind.numberPrefix(), fiscalYearStart, fiscalYearEnd, sequence);
+    }
+
+    /** Any series: documents, receipts (RCT), payments (PAY). */
+    public static String format(String prefix, LocalDate fiscalYearStart, LocalDate fiscalYearEnd, long sequence) {
         if (sequence <= 0) {
             throw new IllegalArgumentException("A sequence starts at 1");
         }
-        String number = kind.numberPrefix() + "/" + yearLabel(fiscalYearStart, fiscalYearEnd)
+        String number = prefix + "/" + yearLabel(fiscalYearStart, fiscalYearEnd)
                 + "/" + String.format("%05d", sequence);
         if (number.length() > MAX_LENGTH) {
-            throw new TradeException("The " + kind.numberPrefix() + " series for this year is full: "
-                    + number + " would exceed the " + MAX_LENGTH + "-character limit for invoice numbers.");
+            throw new TradeException("The " + prefix + " series for this year is full: "
+                    + number + " would exceed the " + MAX_LENGTH + "-character limit for document numbers.");
         }
         return number;
     }
@@ -46,6 +51,10 @@ public final class DocumentNumbers {
 
     /** Counter scope in {@code number_counter}: one series per kind and fiscal year. */
     static String scope(DocumentKind kind, String fiscalYearId) {
-        return "DOC:" + kind.name() + ":" + fiscalYearId;
+        return scope(kind.name(), fiscalYearId);
+    }
+
+    static String scope(String series, String fiscalYearId) {
+        return "DOC:" + series + ":" + fiscalYearId;
     }
 }

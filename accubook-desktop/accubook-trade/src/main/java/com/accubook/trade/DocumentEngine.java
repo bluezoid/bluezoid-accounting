@@ -168,7 +168,7 @@ public final class DocumentEngine {
             if (doc.total.signum() <= 0) {
                 throw new TradeException("A document must have a total above zero to post");
             }
-            FiscalYearRow year = fiscalYearFor(connection, doc.date);
+            Lookups.FiscalYearRow year = Lookups.fiscalYearFor(connection, doc.date);
             if (doc.kind.isNote()) {
                 requireWithinUncredited(connection, doc);
                 requireItemsWithinOriginal(connection, doc);
@@ -179,16 +179,16 @@ public final class DocumentEngine {
                 entitlement.requireWritable(INVENTORY, "move stock for a document");
             }
 
-            String number = DocumentNumbers.format(doc.kind, year.start, year.end,
-                    nextSequence(connection, DocumentNumbers.scope(doc.kind, year.id)));
+            String number = DocumentNumbers.format(doc.kind, year.start(), year.end(),
+                    Lookups.nextSequence(connection, DocumentNumbers.scope(doc.kind, year.id()), now()));
 
             RoundOff money = new RoundOff(doc.amount, doc.total, doc.roundOff);
             String narration = label(doc.kind) + " " + number + " - " + partyName(connection, doc.partyId);
-            List<EntryLine> entries = PostingPlan.entries(doc.kind, partyLedger(connection, doc.partyId),
-                    ledgerByCode(connection, side.counterLedgerCode()), ledgerByCode(connection, "ROUND_OFF"),
+            List<EntryLine> entries = PostingPlan.entries(doc.kind, Lookups.partyLedger(connection, doc.partyId),
+                    Lookups.ledgerByCode(connection, side.counterLedgerCode()), Lookups.ledgerByCode(connection, "ROUND_OFF"),
                     money, narration);
-            PostedVoucher voucher = posting.postWithin(connection, new PostingRequest(module, year.id,
-                    voucherType(connection, doc.kind.voucherTypeCode()), doc.date, number, narration, entries,
+            PostedVoucher voucher = posting.postWithin(connection, new PostingRequest(module, year.id(),
+                    Lookups.voucherType(connection, doc.kind.voucherTypeCode()), doc.date, number, narration, entries,
                     "doc:" + documentId));
 
             for (DocumentLine line : docLines) {
@@ -202,7 +202,7 @@ public final class DocumentEngine {
                     + " SET status = 'POSTED', number = ?, fiscal_year_id = ?, voucher_id = ?, updated_at = ? "
                     + "WHERE id = ?")) {
                 ps.setString(1, number);
-                ps.setString(2, year.id);
+                ps.setString(2, year.id());
                 ps.setString(3, voucher.voucherId());
                 ps.setLong(4, now());
                 ps.setString(5, documentId);
@@ -240,14 +240,14 @@ public final class DocumentEngine {
                     }
                 }
             }
-            FiscalYearRow year = fiscalYearFor(connection, cancellationDate);
+            Lookups.FiscalYearRow year = Lookups.fiscalYearFor(connection, cancellationDate);
             List<DocumentLine> docLines = loadLines(connection, documentId);
             if (docLines.stream().anyMatch(line -> line.warehouseId() != null)) {
                 entitlement.requireWritable(INVENTORY, "reverse a document's stock");
             }
 
             PostedVoucher reversal = posting.reverseWithin(connection, doc.voucherId, new ReversalRequest(module,
-                    year.id, cancellationDate, "Cancelled " + doc.number + ": " + reason.strip(), null,
+                    year.id(), cancellationDate, "Cancelled " + doc.number + ": " + reason.strip(), null,
                     "doc-cancel:" + documentId));
 
             for (DocumentLine line : docLines) {
@@ -638,76 +638,6 @@ public final class DocumentEngine {
 
     private static String partyName(Connection connection, String partyId) throws SQLException {
         return party(connection, partyId).name;
-    }
-
-    private static String partyLedger(Connection connection, String partyId) throws SQLException {
-        return single(connection, "SELECT ledger_id FROM party WHERE id = ?", partyId, "No such party: " + partyId);
-    }
-
-    private static String ledgerByCode(Connection connection, String code) throws SQLException {
-        return single(connection, "SELECT id FROM ledger WHERE system_code = ?", code,
-                "The " + code + " account is missing from this company's chart of accounts");
-    }
-
-    private static String voucherType(Connection connection, String code) throws SQLException {
-        return single(connection, "SELECT id FROM voucher_type WHERE code = ?", code,
-                "The " + code + " voucher type is missing from this company");
-    }
-
-    private static String single(Connection connection, String sql, String parameter, String missing)
-            throws SQLException {
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, parameter);
-            try (ResultSet rows = ps.executeQuery()) {
-                if (!rows.next()) {
-                    throw new TradeException(missing);
-                }
-                return rows.getString(1);
-            }
-        }
-    }
-
-    private record FiscalYearRow(String id, LocalDate start, LocalDate end) {
-    }
-
-    /**
-     * The fiscal year a date falls in, read from the company file - never from a
-     * calendar rule (R-9, D-32). A closed year refuses new documents.
-     */
-    private static FiscalYearRow fiscalYearFor(Connection connection, LocalDate date) throws SQLException {
-        try (PreparedStatement ps = connection.prepareStatement("SELECT id, start_date, end_date, is_closed "
-                + "FROM fiscal_year WHERE start_date <= ? AND end_date >= ?")) {
-            ps.setString(1, date.toString());
-            ps.setString(2, date.toString());
-            try (ResultSet rows = ps.executeQuery()) {
-                if (!rows.next()) {
-                    throw new TradeException("No fiscal year covers " + date + ". Create that year first.");
-                }
-                if (rows.getInt(4) == 1) {
-                    throw new TradeException("The fiscal year containing " + date + " is closed");
-                }
-                return new FiscalYearRow(rows.getString(1), LocalDate.parse(rows.getString(2)),
-                        LocalDate.parse(rows.getString(3)));
-            }
-        }
-    }
-
-    /** Same pattern as the posting core's allocator: inside BEGIN IMMEDIATE, so numbers queue, never race. */
-    private long nextSequence(Connection connection, String scope) throws SQLException {
-        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO number_counter (scope, last_number, "
-                + "updated_at) VALUES (?, 0, ?) ON CONFLICT (scope) DO NOTHING")) {
-            ps.setString(1, scope);
-            ps.setLong(2, now());
-            ps.executeUpdate();
-        }
-        try (PreparedStatement ps = connection.prepareStatement(
-                "UPDATE number_counter SET last_number = last_number + 1, updated_at = ? WHERE scope = ?")) {
-            ps.setLong(1, now());
-            ps.setString(2, scope);
-            ps.executeUpdate();
-        }
-        return Long.parseLong(single(connection, "SELECT last_number FROM number_counter WHERE scope = ?", scope,
-                "Number series vanished: " + scope));
     }
 
     private static String blankToNull(String value) {
