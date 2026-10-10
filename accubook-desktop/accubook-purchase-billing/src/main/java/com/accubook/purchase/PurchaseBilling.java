@@ -8,6 +8,7 @@ import com.accubook.trade.Document;
 import com.accubook.trade.DocumentEngine;
 import com.accubook.trade.DocumentKind;
 import com.accubook.trade.DraftRequest;
+import com.accubook.trade.SettlementEngine;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -23,6 +24,7 @@ import java.util.Optional;
 public final class PurchaseBilling {
 
     private final DocumentEngine engine;
+    private final SettlementEngine settlements;
 
     public PurchaseBilling(ModuleTransactions transactions, EntitlementGuard entitlement) {
         this(transactions, entitlement, StockPort.installed(), Clock.systemUTC());
@@ -30,8 +32,16 @@ public final class PurchaseBilling {
 
     public PurchaseBilling(ModuleTransactions transactions, EntitlementGuard entitlement, Optional<StockPort> stock,
                          Clock clock) {
+        TransactionalPosting posting = new TransactionalPosting(entitlement, clock);
         this.engine = new DocumentEngine(DocumentKind.Side.PURCHASE, PurchaseBillingModule.ID, transactions, entitlement,
-                new TransactionalPosting(entitlement, clock), stock, clock);
+                posting, stock, clock);
+        this.settlements = new SettlementEngine(DocumentKind.Side.PURCHASE, PurchaseBillingModule.ID, transactions, entitlement,
+                posting, clock);
+    }
+
+    /** Payments, allocations, outstanding and aging for this side. */
+    public SettlementEngine settlements() {
+        return settlements;
     }
 
     public Document createDraft(DraftRequest request) {
