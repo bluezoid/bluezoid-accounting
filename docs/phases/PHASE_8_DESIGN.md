@@ -81,6 +81,13 @@ valuation is posted (P2-1: a build without inventory never shows them).
 | **P8-4** | When is closing stock posted? | **On demand, at any date** (month, quarter or year end), by a valuation run. Year-end close (P11) will require a current one. |
 | **P8-5** | Costs the system cannot know | **Opening stock and stock found in a count need a unit cost**; a positive adjustment without one is valued at the current average. Write-downs to net realisable value (AS 2's "lower of cost and NRV") are **manual adjustments** for now, not computed. |
 
+**Added during implementation:**
+
+| ID | Question | Decision (user) |
+|---|---|---|
+| **P8-6** | Rounding the posted closing stock | Round half-up to the paisa; the valuation keeps four decimals. |
+| — | FIFO across a transfer | Each source layer drawn on arrives as its own layer at the destination, keeping its cost and acquisition date (the inventory architecture: "a transfer moves cost with the goods"). |
+
 ## 6. Not in Phase 8
 Batches, FEFO and expiry (D-15, D-27) · manufacturing, WIP and scrap (I-3) ·
 landed cost (freight added to purchase cost) · NRV computation · screens.
