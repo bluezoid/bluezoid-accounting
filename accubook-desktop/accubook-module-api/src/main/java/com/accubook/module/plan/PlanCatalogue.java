@@ -48,7 +48,9 @@ public final class PlanCatalogue {
     static {
         DECLARED.put(BuildPlan.BASIC, union(IN_EVERY_PLAN));
         DECLARED.put(BuildPlan.PROFESSIONAL, union(IN_EVERY_PLAN,
-                ids("inventory", "sales-orders", "banking", "recurring")));
+                // purchase-orders added by P7-21: it had a dependency rule but
+                // no plan, so no customer could ever have it.
+                ids("inventory", "sales-orders", "purchase-orders", "banking", "recurring")));
         DECLARED.put(BuildPlan.ENTERPRISE, union(DECLARED.get(BuildPlan.PROFESSIONAL),
                 ids("hr", "payroll", "manufacturing", "budgets", "approvals", "ocr"),
                 Set.of(TAXATION_RETURNS, BACKUP_CLOUD)));

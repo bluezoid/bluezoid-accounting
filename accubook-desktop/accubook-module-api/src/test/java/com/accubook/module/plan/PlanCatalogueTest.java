@@ -30,6 +30,18 @@ class PlanCatalogueTest {
     }
 
     @Test
+    @DisplayName("every module with a dependency rule is sold in at least one plan or as an add-on")
+    void noModuleIsUnsellable() {
+        Set<ModuleId> sold = new java.util.HashSet<>(PlanCatalogue.addOns());
+        for (BuildPlan plan : BuildPlan.values()) {
+            sold.addAll(PlanCatalogue.modulesFor(plan));
+        }
+        for (String module : List.of("manufacturing", "sales-orders", "purchase-orders", "payroll", "taxation-returns")) {
+            assertTrue(sold.contains(id(module)), module + " is in no plan and no add-on");
+        }
+    }
+
+    @Test
     @DisplayName("Basic contains the approved set and no more")
     void basicMatchesMatrix() {
         Set<ModuleId> modules = PlanCatalogue.modulesFor(BuildPlan.BASIC);
@@ -53,6 +65,7 @@ class PlanCatalogueTest {
         assertAll(
                 () -> assertTrue(modules.contains(id("inventory"))),
                 () -> assertTrue(modules.contains(id("sales-orders"))),
+                () -> assertTrue(modules.contains(id("purchase-orders")), "P7-21"),
                 () -> assertTrue(modules.contains(id("banking"))),
                 () -> assertTrue(modules.contains(id("recurring"))),
                 () -> assertFalse(modules.contains(id("payroll"))),
