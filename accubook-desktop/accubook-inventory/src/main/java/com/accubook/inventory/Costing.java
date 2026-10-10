@@ -31,7 +31,8 @@ import java.util.Map;
  *   <li>Out: weighted average (moving, P8-2) or FIFO with a consumption record
  *       per layer (P8-1).</li>
  *   <li>Transfer: in at exactly the value that went out - no value created or
- *       lost, no phantom layer (D-31).</li>
+ *       lost, no phantom layer (D-31). Under FIFO each source layer drawn on
+ *       arrives as its own layer, keeping its cost and acquisition date.</li>
  *   <li>Undoing an earlier document (a return, a cancellation - the movement's
  *       cost source): at the unit cost of that document's movements of the
  *       item.</li>
@@ -84,6 +85,7 @@ final class Costing {
         Long sourceUnitCost = costSourceType == null ? null
                 : sourceUnitCost(connection, itemId, costSourceType, costSourceId);
         long outValue = 0;
+        FifoDraw transferred = null;
         if (from != null) {
             long[] position = positions.computeIfAbsent(from, w -> new long[2]);
             String entryId = Ids.newIdString();
@@ -109,6 +111,7 @@ final class Costing {
             insertEntry(connection, entryId, movementId, itemId, from, date, order, -quantity, -outValue, position);
             if (draw != null) {
                 recordConsumption(connection, entryId, draw);
+                transferred = "TRANSFER".equals(type) ? draw : null;
             }
         }
         if (to != null) {
@@ -131,21 +134,26 @@ final class Costing {
             if (fifo) {
                 try (PreparedStatement ps = connection.prepareStatement("INSERT INTO fifo_layer (id, entry_id, item_id, "
                         + "warehouse_id, layer_date, layer_order, quantity_e4, value_e4) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
-                    ps.setString(1, Ids.newIdString());
-                    ps.setString(2, entryId);
-                    ps.setString(3, itemId);
-                    ps.setString(4, to);
-                    ps.setString(5, date.toString());
-                    ps.setLong(6, order);
-                    ps.setLong(7, quantity);
-                    ps.setLong(8, inValue);
-                    ps.executeUpdate();
+                    if (transferred != null) {
+                        // FIFO identity travels: one layer per source layer, at its
+                        // own cost and acquisition date.
+                        for (int i = 0; i < transferred.taken().size(); i++) {
+                            insertLayer(ps, entryId, itemId, to, transferred.layerDates().get(i),
+                                    transferred.layerOrders().get(i), transferred.taken().get(i)[0],
+                                    transferred.taken().get(i)[1]);
+                        }
+                    } else {
+                        insertLayer(ps, entryId, itemId, to, date.toString(), order, quantity, inValue);
+                    }
+                    ps.executeBatch();
                 }
             }
         }
     }
 
-    private record FifoDraw(long value, List<String> layerIds, List<long[]> taken) {
+    /** Each taken element: {quantity, value}; layer dates and orders kept for transfers. */
+    private record FifoDraw(long value, List<String> layerIds, List<long[]> taken, List<String> layerDates,
+                            List<Long> layerOrders) {
     }
 
     /**
@@ -158,12 +166,15 @@ final class Costing {
                                      String preferredLayerId) throws SQLException {
         List<long[]> taken = new ArrayList<>();
         List<String> layerIds = new ArrayList<>();
+        List<String> layerDates = new ArrayList<>();
+        List<Long> layerOrders = new ArrayList<>();
         long needed = quantity;
         long value = 0;
         try (PreparedStatement ps = connection.prepareStatement("""
                 SELECT l.id, l.quantity_e4, l.value_e4,
                        COALESCE((SELECT SUM(c.quantity_e4) FROM fifo_consumption c WHERE c.layer_id = l.id), 0),
-                       COALESCE((SELECT SUM(c.value_e4) FROM fifo_consumption c WHERE c.layer_id = l.id), 0)
+                       COALESCE((SELECT SUM(c.value_e4) FROM fifo_consumption c WHERE c.layer_id = l.id), 0),
+                       l.layer_date, l.layer_order
                 FROM fifo_layer l WHERE l.item_id = ? AND l.warehouse_id = ?
                 ORDER BY CASE WHEN l.id = ? THEN 0 ELSE 1 END, l.layer_date, l.layer_order
                 """)) {
@@ -183,6 +194,8 @@ final class Costing {
                     long takeValue = take == remaining ? remainingValue : share(layerValue, take, layerQuantity);
                     layerIds.add(rows.getString(1));
                     taken.add(new long[]{take, takeValue});
+                    layerDates.add(rows.getString(6));
+                    layerOrders.add(rows.getLong(7));
                     needed -= take;
                     value += takeValue;
                 }
@@ -192,7 +205,20 @@ final class Costing {
             // Stock never goes negative (P7-4), so the layers always cover an issue.
             throw new IllegalStateException("FIFO layers do not cover an issue of item " + itemId);
         }
-        return new FifoDraw(value, layerIds, taken);
+        return new FifoDraw(value, layerIds, taken, layerDates, layerOrders);
+    }
+
+    private static void insertLayer(PreparedStatement ps, String entryId, String itemId, String warehouseId,
+                                    String layerDate, long layerOrder, long quantity, long value) throws SQLException {
+        ps.setString(1, Ids.newIdString());
+        ps.setString(2, entryId);
+        ps.setString(3, itemId);
+        ps.setString(4, warehouseId);
+        ps.setString(5, layerDate);
+        ps.setLong(6, layerOrder);
+        ps.setLong(7, quantity);
+        ps.setLong(8, value);
+        ps.addBatch();
     }
 
     private static void recordConsumption(Connection connection, String entryId, FifoDraw draw) throws SQLException {

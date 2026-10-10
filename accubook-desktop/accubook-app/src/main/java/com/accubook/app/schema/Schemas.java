@@ -1273,9 +1273,12 @@ public final class Schemas {
             CREATE INDEX idx_valuation_entry_position
                 ON valuation_entry (item_id, warehouse_id, entry_date, entry_order);
 
+            -- A receipt creates one layer. A transfer creates one per source
+            -- layer it drew on, keeping each layer's acquisition date and cost,
+            -- so FIFO identity travels with the goods.
             CREATE TABLE fifo_layer (
                 id              TEXT    NOT NULL PRIMARY KEY,
-                entry_id        TEXT    NOT NULL UNIQUE REFERENCES valuation_entry (id),
+                entry_id        TEXT    NOT NULL REFERENCES valuation_entry (id),
                 item_id         TEXT    NOT NULL REFERENCES item (id),
                 warehouse_id    TEXT    NOT NULL REFERENCES warehouse (id),
                 layer_date      TEXT    NOT NULL,
@@ -1285,6 +1288,7 @@ public final class Schemas {
             ) STRICT;
 
             CREATE INDEX idx_fifo_layer_position ON fifo_layer (item_id, warehouse_id, layer_date, layer_order);
+            CREATE INDEX idx_fifo_layer_entry ON fifo_layer (entry_id);
 
             CREATE TABLE fifo_consumption (
                 id           TEXT    NOT NULL PRIMARY KEY,
