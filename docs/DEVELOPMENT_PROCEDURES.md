@@ -23,10 +23,17 @@ mvn verify                      # then interpret failures
 |---|---|---|
 | P1 | phantom "cannot start a transaction within a transaction" | a stale jar in `target/deps` shadowed a freshly built module |
 | P6 | five governance tests said `is_system` was 0 when the database held 1 | `accubook-app` had not been reinstalled, so the accounting module tested against older provisioning code |
-| P7d | a whole integration suite failed with `NoClassDefFoundError: Database` | `./build.sh` had run `mvn clean package` after the last install; a single-module `-pl` run then mixed fresh and installed artifacts |
+| P7d | integration suites failed at random with `NoClassDefFoundError: Database` (an **unqualified** class name) | **VS Code's Java compiler (Eclipse JDT) writes into `target/` too.** It cannot see the test-only `--add-reads` Maven grants, so it compiled the tests with errors and overwrote Maven's classes. Proof: the class file contained `Unresolved compilation problems`, a string only JDT emits. First misdiagnosed as a `build.sh` artifact problem. |
 
-**Specific rule from P7d:** after running `./build.sh`, run
-`mvn -o clean install -DskipTests` before any `-pl` test run.
+**Rules from P7d:**
+
+- A `NoClassDefFoundError` naming a class **without its package** means an
+  IDE-compiled class. Check with
+  `strings <file>.class | grep "Unresolved compilation"`.
+- **Tests inside a JPMS module must use only modules that module already
+  reads.** A test that needs other modules (documents *and* inventory, say)
+  belongs in `accubook-integration-tests`, which has no `module-info` and runs
+  on the classpath, so the IDE and Maven agree.
 
 Once is bad luck; twice is a process gap. In a multi-module Maven build with
 JPMS, a module resolves its dependencies from installed artifacts, not from
