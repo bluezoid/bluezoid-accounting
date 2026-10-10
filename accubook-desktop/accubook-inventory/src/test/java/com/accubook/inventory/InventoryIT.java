@@ -307,7 +307,8 @@ class InventoryIT {
                 try (Statement s = connection.createStatement()) {
                     return s.executeUpdate("UPDATE stock SET quantity_e4 = 0");
                 }
-            })).isInstanceOf(com.accubook.persistence.guard.UnauthorizedWriteException.class);
+            })).isInstanceOf(SQLException.class)              // the persistence guard's refusal
+                    .hasMessageContaining("Refusing to write 'stock'");
 
             // History stays readable.
             assertThat(inventory.stockOf(rice.id(), main.id())).isEqualByComparingTo("10");

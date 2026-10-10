@@ -1,4 +1,11 @@
-package com.accubook.inventory;
+package com.accubook.integration;
+
+import com.accubook.inventory.Inventory;
+import com.accubook.inventory.InventoryModule;
+import com.accubook.inventory.ItemKind;
+import com.accubook.inventory.MovementRequest;
+import com.accubook.inventory.MovementType;
+import com.accubook.inventory.Unit;
 
 import com.accubook.app.company.CompanyService;
 import com.accubook.licensing.Entitlement;
