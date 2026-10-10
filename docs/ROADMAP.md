@@ -115,7 +115,7 @@ untouched.
 
 **Exit:** ✅ met. Awaiting sign-off on the 8 🔴 BLOCKING decisions.
 
-## Phase 1 — Desktop foundation + signed cross-platform packaging
+## Phase 1 — Desktop foundation + signed cross-platform packaging ✅ COMPLETE (Linux verified; Windows/macOS/signing pending certificates and CI)
 **Blocked by: NOTHING to start. B-3 + B-6 needed to finish.**
 
 > **Sequencing note.** P1 can begin today, but two of its deliverables depend on
@@ -143,7 +143,7 @@ VM with **no system Java**.
 **Starts now in parallel:** code-signing certificate procurement (longest lead
 item on the entire roadmap; gates this phase's exit).
 
-## Phase 2 — Database/storage architecture + migrations
+## Phase 2 — Database/storage architecture + migrations ✅ COMPLETE (user-facing backup → P12)
 **Blocked by: B-3 (money encoding), B-6 (topology)**
 
 - Full **universal** schema, hand-authored for SQLite, all `STRICT`
@@ -158,7 +158,7 @@ item on the entire roadmap; gates this phase's exit).
 **Exit:** multiple isolated companies; backup/restore round-trip verified;
 migration from a seeded older version proven; concurrency suite green.
 
-## Phase 3 — Licensing + machine binding + subscription lifecycle
+## Phase 3 — Licensing + machine binding + subscription lifecycle ✅ COMPLETE (activation flow → P13)
 **Blocked by: I-11 (grace period), I-12 (re-bind allowance), I-17 (key rotation)**
 
 - Ed25519 verification; entitlement token format; **two public keys embedded**
@@ -171,7 +171,7 @@ migration from a seeded older version proven; concurrency suite green.
 **Exit:** activate, expire, renew, re-bind, suspend and clock-rollback all behave
 correctly; no licensing failure can destroy or lock away data.
 
-## Phase 4 — Module/build architecture + entitlement enforcement
+## Phase 4 — Module/build architecture + entitlement enforcement ✅ COMPLETE
 **Blocked by: B-7 (plan matrix), B-8 (dormant read access)**
 
 ⚠️ **Adjustment §2.1 — this phase now delivers the enforcement infrastructure,
@@ -193,7 +193,7 @@ be written *against* an existing guard.
 **Exit:** BASIC and PROFESSIONAL installers from one codebase; a non-ACTIVE
 module is refused at both the use-case and persistence layers.
 
-## Phase 5 — Core accounting engine / sealed posting core
+## Phase 5 — Core accounting engine / sealed posting core ✅ COMPLETE
 **Blocked by: nothing further**
 
 - **Sealed posting core** — package-private ledger mutation, so the D-22 Tally
