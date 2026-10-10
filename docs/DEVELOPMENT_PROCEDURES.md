@@ -17,12 +17,16 @@ mvn clean install -DskipTests   # refresh every module's artifact
 mvn verify                      # then interpret failures
 ```
 
-**Why.** Twice now, a stale artifact has produced a convincing but false failure:
+**Why.** Three times now, a stale artifact has produced a convincing but false failure:
 
 | Phase | Symptom | Actual cause |
 |---|---|---|
 | P1 | phantom "cannot start a transaction within a transaction" | a stale jar in `target/deps` shadowed a freshly built module |
 | P6 | five governance tests said `is_system` was 0 when the database held 1 | `accubook-app` had not been reinstalled, so the accounting module tested against older provisioning code |
+| P7d | a whole integration suite failed with `NoClassDefFoundError: Database` | `./build.sh` had run `mvn clean package` after the last install; a single-module `-pl` run then mixed fresh and installed artifacts |
+
+**Specific rule from P7d:** after running `./build.sh`, run
+`mvn -o clean install -DskipTests` before any `-pl` test run.
 
 Once is bad luck; twice is a process gap. In a multi-module Maven build with
 JPMS, a module resolves its dependencies from installed artifacts, not from
