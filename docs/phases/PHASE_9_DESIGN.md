@@ -1,6 +1,6 @@
 # Phase 9 Design — Indian Taxation
 
-**Status:** DESIGN — awaiting B-4 and P9-1…P9-4 · **Date:** 2026-10-10
+**Status:** APPROVED 2026-10-10 (B-4 and P9-1…P9-4 as recommended) · **Date:** 2026-10-10
 **Baseline:** 627 passing · 0 failing (UI on Xvfb)
 
 > Note: I-6 (TDS surcharge base) and I-7 (Professional Tax states) concern

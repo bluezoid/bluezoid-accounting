@@ -6,9 +6,9 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2 (2026-10-10).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10).
 
-**Still open:** B-2 · B-4 · B-5 · I-3, I-6…I-18 · N-2…N-9.
+**Still open:** B-2 · B-5 · I-3, I-6…I-18 · N-2…N-9.
 
 ## Classification
 
@@ -145,7 +145,13 @@ scales (money 4, rate 2, FX 8, conversion 6, days 1).
 
 **Depends on it:** everything. **Phase 2.**
 
-## B-4 · GST rounding: byte-compatible or correct?
+## B-4 · GST rounding: byte-compatible or correct? — ✅ **DECIDED 2026-10-10**
+
+> **Decision (user): (b) correct.** Each line's CGST/SGST/IGST/cess is rounded
+> **half-up to the paisa** when computed; invoice totals and every return cell
+> are exact sums of those line figures. Differs from the web app's exports by at
+> most a paisa per cell on exact-half cases; the divergence is documented and the
+> reference test vectors are re-based deliberately, never silently.
 
 **Question.** Reproduce the reference's `Number(x).toFixed(2)` (IEEE-754,
 effectively half-even), or use `BigDecimal` with explicit `HALF_UP`?
@@ -310,6 +316,19 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P7-5 Stock coupling:** posting an invoice/bill moves stock in the same
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
+
+## P9-1…P9-4 · Phase 9 taxation — ✅ **APPROVED 2026-10-10**
+
+> As recommended in `PHASE_9_DESIGN.md` §4.
+>
+> - **P9-1:** sub-phases P9a rule packs → P9b GST on documents → P9c TDS/TCS →
+>   P9d returns (`taxation-returns` add-on) → P9e e-invoice / e-way payloads.
+> - **P9-2:** the item carries its GST slab (+ cess) with effective-dated
+>   changes; every line has an explicit tax category — never silently nil.
+> - **P9-3:** in scope: B2B/B2C intra/inter, RCM purchases, composition, cess.
+>   Later: exports/SEZ, e-commerce operator, advances, GSTR-4.
+> - **P9-4:** signed rule-pack files (own Ed25519 keys, two-key rotation), one
+>   bundled, newer ones imported offline; online delivery with P13.
 
 ## P8-1…P8-5 · Phase 8 valuation rules — ✅ **APPROVED 2026-10-10**
 
@@ -535,12 +554,12 @@ as a rebuildable optimisation with a verification routine.
 The reference is in-memory at O(ledgers × entries). Scaled integers make SQL
 `GROUP BY` exact. **Recommendation: SQL.** Affects report parity tests.
 
-## I-6 · TDS surcharge base
+## I-6 · TDS surcharge base *(payroll / salary TDS — gates P15, not P9)*
 `calculateTDS` tests surcharge against **gross** `annualIncome`, not
 `taxableIncome`. Likely incorrect under the Act. **Needs a tax professional's
 ruling** — do not silently "fix" a tax rule.
 
-## I-7 · Professional Tax state coverage
+## I-7 · Professional Tax state coverage *(payroll — gates P15, not P9)*
 PT slabs are **Maharashtra only**, hardcoded. Which states ship in v1?
 
 ## I-8 · Cash flow statement in v1?
