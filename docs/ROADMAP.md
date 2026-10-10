@@ -206,7 +206,7 @@ module is refused at both the use-case and persistence layers.
 **Exit:** no code path outside the posting package can mutate a ledger balance;
 posting invariants asserted; ported posting tests green.
 
-## Phase 6 — Accounting modules
+## Phase 6 — Accounting modules ✅ COMPLETE (P6-4 screen 2026-10-09)
 - Chart of accounts, ledger groups (hierarchy), ledgers — resolved by **stable
   `system_code`**, never display name
 - Company provisioning (18 groups, 23 ledgers, HR masters, fiscal year)
@@ -216,7 +216,7 @@ posting invariants asserted; ported posting tests green.
 
 **Exit:** a full manual bookkeeping cycle with a correct trial balance.
 
-## Phase 7 — Inventory masters + Sales/Purchase documents
+## Phase 7 — Inventory masters + Sales/Purchase documents ✅ COMPLETE 2026-10-10
 ⚠️ **Adjustment §2.2 — inventory split; masters land with documents.**
 
 - Items, categories, units (**per company**), warehouses
