@@ -1,6 +1,6 @@
 # Phase 7 Report — Parties, Inventory Masters, Sales & Purchase Documents
 
-**Status:** IN PROGRESS — P7a ✅ · P6-4 screen ✅ · P7b ✅ · **P7c ✅** · P7d–P7e not started
+**Status:** IN PROGRESS — P7a ✅ · P6-4 screen ✅ · P7b ✅ · P7c ✅ · **P7d ✅** · P7e not started
 **Design:** `PHASE_7_DESIGN.md` (decisions P7-1…P7-6 approved 2026-10-09)
 
 ---
@@ -244,4 +244,62 @@ numbers are 17 characters, Rule 46(b) allows 16** · R-11 unrounded line amounts
   return more units of an item than the invoice sold, as long as the value fits.
   Recommend a per-item quantity check in P7d or P8 (record as a decision then).
 - A document date in a closed year is refused, but nothing closes years until P11.
+
+---
+
+## P7d — Settlement, outstanding, aging, statements ✅ (2026-10-10)
+
+**Tests:** **590 passing · 0 failing · 0 skipped** with UI on Xvfb · `BUILD SUCCESS`
+**Before P7d:** 567 (+23)
+
+**Phase 7 exit criterion met:** *invoice → receipt → ledger → statement
+reconciles exactly* — one test drives invoices with round-off, a split
+receipt, a credit note, a bounced cheque and an advance, then asserts the
+statement's closing balance, the party's trial-balance balance and
+(outstanding − advances) are equal to the paisa.
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| P7-17: a note may not return more of an item than the original carried | `DocumentEngine` |
+| Migration 7: `*_settlement`, `*_allocation`; the database refuses over-allocation (D-21), foreign-party sources, notes as targets, edits, deletes, and cancelling anything still allocated | `Schemas` |
+| Allocations are **marked removed with a date**, never deleted, so as-of reports stay true | migration 7 |
+| `SettlementEngine`: receipts/payments posted on entry (P7-14) via Cash & Bank (P7-16), many-to-many allocation (R-6), derived outstanding/status (R-7), as-of outstanding, aging (P7-15), unallocated credits | `accubook-trade` |
+| Notes applied to their originals automatically (P7-13); note date not before original; cancellation guarded | `DocumentEngine` |
+| `PartyStatement` from the journal | `accubook-accounting` |
+| `Parties` over `ModuleTransactions` — closes the P7c composition risk | `accubook-accounting` |
+| `accubook-integration-tests` — classpath module for cross-module tests | new module |
+
+### Reference defects recorded
+**R-12** aging's as-of date is cosmetic (today's payments and statuses, no date
+filter) · **R-13** credit notes are aged as receivables.
+
+### Defects found in our own work
+1. **Deleting allocations would have falsified history** — caught at design
+   review of my own migration before the service existed; allocations are now
+   soft-removed with a date. A test proves a bounced cheque leaves earlier
+   as-of reports unchanged.
+2. **Accounting fixtures carried a copy of the migration splitter** that ended a
+   trigger at a `CASE … END`. Commit `93e5654` broke 61 accounting tests
+   because I ran only some modules before committing it. Fixed by using the
+   real runner; full builds before every commit since.
+3. **The IDE was overwriting Maven's test classes** (see
+   `DEVELOPMENT_PROCEDURES.md` §1). Fixed structurally.
+
+### Mutation checks
+| Mutation | Caught by |
+|---|---|
+| as-of ignores removal dates (R-12) | `Cancellation.bouncedCheque` |
+| notes aged as receivables (R-13) | `AgingReports.buckets`, `Reconciliation.reconciles` |
+| notes not auto-applied (P7-13) | `Notes.appliedAutomatically`, `AgingReports.buckets` |
+| note quantity limit removed | (P7-17 tests) |
+
+### Risks / not done
+- No screens for receipts, aging or statements.
+- **Refunds** of a party's credit balance are not modelled (P7d scope note).
+- TDS netting and TCS on receipts arrive with taxation (P9).
+- Opening balances entered on a ledger are not in statements or the trial
+  balance until P11.
+- `ChartOfAccounts` still needs a `Database` (unlike `Parties` now).
 
