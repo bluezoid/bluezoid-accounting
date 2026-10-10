@@ -9,5 +9,6 @@ public record Item(
         String categoryId,
         String hsnSac,
         String description,
-        boolean active) {
+        boolean active,
+        CostingMethod costingMethod) {
 }

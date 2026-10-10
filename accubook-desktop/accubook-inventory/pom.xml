@@ -8,6 +8,8 @@
   <dependencies>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
+    <!-- The kernel posting core: a valuation run posts the closing-stock voucher (P8-4). -->
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-accounting</artifactId></dependency>
     <!-- Deliberately NOT accubook-persistence or accubook-licensing (P4): storage
          comes through ModuleTransactions, which is always guarded, and the
          module learns its state only as a ModuleState. -->

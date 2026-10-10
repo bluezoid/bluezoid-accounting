@@ -39,11 +39,13 @@ public final class Inventory {
     private final ModuleTransactions transactions;
     private final EntitlementGuard entitlement;
     private final Clock clock;
+    private final com.accubook.accounting.posting.TransactionalPosting posting;
 
     public Inventory(ModuleTransactions transactions, EntitlementGuard entitlement, Clock clock) {
         this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.entitlement = Objects.requireNonNull(entitlement, "entitlement");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.posting = new com.accubook.accounting.posting.TransactionalPosting(entitlement, clock);
     }
 
     public Inventory(ModuleTransactions transactions, EntitlementGuard entitlement) {
@@ -122,7 +124,7 @@ public final class Inventory {
         Objects.requireNonNull(unitId, "unitId");
         Item item = new Item(Ids.newIdString(), requireText(name, "An item needs a name"),
                 blankToNull(sku), kind, unitId, categoryId, blankToNull(hsnSac),
-                blankToNull(description), true);
+                blankToNull(description), true, CostingMethod.WEIGHTED_AVERAGE);
         write("create the item", connection -> {
             try (PreparedStatement ps = connection.prepareStatement(
                     "INSERT INTO item (id, category_id, unit_id, name, sku, kind, hsn_sac, "
@@ -356,15 +358,235 @@ public final class Inventory {
                         MoneyMapper.fromStored(rows.getLong(4), Scale.QUANTITY))));
     }
 
+    // ============================================================= valuation
+
+    /**
+     * P8-1: choose how an item is costed. Refused once it has moved - every
+     * past issue was costed under the old method (the schema refuses it too).
+     */
+    public void setCostingMethod(String itemId, CostingMethod method) {
+        Objects.requireNonNull(method, "method");
+        require("change an item's costing method");
+        write("change the costing method", connection -> {
+            if (hasMovements(connection, itemId)) {
+                throw new InventoryException("This item already has stock movements, so its costing method "
+                        + "cannot change: every issue so far was costed the old way.");
+            }
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "UPDATE item SET costing_method = ?, updated_at = ? WHERE id = ?")) {
+                ps.setString(1, method.name());
+                ps.setLong(2, now());
+                ps.setString(3, itemId);
+                requireOneRow(ps.executeUpdate(), "No such item: " + itemId);
+            }
+        });
+    }
+
+    /**
+     * Every stock position's value on {@code asOf}, read from the valuation
+     * ledger - the position after the last entry on or before that date. Never
+     * today's quantities at old costs (D-24).
+     */
+    public StockValuation valuation(LocalDate asOf) {
+        Objects.requireNonNull(asOf, "asOf");
+        return read(connection -> {
+            List<ValuationLine> lines = list(connection, POSITIONS_AS_OF + " ORDER BY e.item_id, e.warehouse_id",
+                    rows -> new ValuationLine(rows.getString(1), rows.getString(2),
+                            MoneyMapper.fromStored(rows.getLong(3), Scale.QUANTITY),
+                            MoneyMapper.fromStored(rows.getLong(4), Scale.MONEY)),
+                    asOf.toString(), asOf.toString());
+            BigDecimal total = lines.stream().map(ValuationLine::value).reduce(BigDecimal.ZERO, BigDecimal::add);
+            return new StockValuation(asOf, lines.stream().filter(l -> l.quantity().signum() > 0).toList(), total);
+        });
+    }
+
+    /**
+     * P8-4: value all stock on {@code date} and post the difference from the
+     * Stock-in-Hand balance on that date as a closing-stock voucher:
+     * an increase Dr Stock-in-Hand / Cr Change in Stock, a decrease the reverse.
+     * Change in Stock sits in Direct Expenses, so gross profit is
+     * opening + purchases − closing.
+     *
+     * <p>A run replaces any earlier run for the same date. Because it changes the
+     * Stock-in-Hand balance from {@code date} onwards, any posted run after it is
+     * marked stale and must be posted again, in date order (P8-3).
+     */
+    public ValuationRun postValuation(LocalDate date) {
+        Objects.requireNonNull(date, "date");
+        require("post a stock valuation");
+        String runId = Ids.newIdString();
+        write("post the stock valuation", connection -> {
+            String fiscalYearId = openFiscalYear(connection, date);
+            costEverythingUncosted(connection);
+
+            long value;
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT COALESCE(SUM(value_after_e4), 0) FROM (" + POSITIONS_AS_OF + ")")) {
+                ps.setString(1, date.toString());
+                ps.setString(2, date.toString());
+                try (ResultSet rows = ps.executeQuery()) {
+                    rows.next();
+                    value = rows.getLong(1);
+                }
+            }
+            String stockLedger = systemLedger(connection, "STOCK_IN_HAND", "Stock-in-Hand", "STOCK_IN_HAND");
+            String changeLedger = systemLedger(connection, "CHANGE_IN_STOCK", "Change in Stock", "DIRECT_EXPENSES");
+            long balance;
+            try (PreparedStatement ps = connection.prepareStatement("SELECT COALESCE(SUM(e.debit_amount_e4 - "
+                    + "e.credit_amount_e4), 0) FROM voucher_entry e JOIN voucher v ON v.id = e.voucher_id "
+                    + "WHERE e.ledger_id = ? AND v.is_posted = 1 AND v.voucher_date <= ?")) {
+                ps.setString(1, stockLedger);
+                ps.setString(2, date.toString());
+                try (ResultSet rows = ps.executeQuery()) {
+                    rows.next();
+                    balance = rows.getLong(1);
+                }
+            }
+
+            String voucherId = null;
+            long delta = value - balance;
+            if (delta != 0) {
+                BigDecimal amount = MoneyMapper.fromStored(Math.abs(delta), Scale.MONEY);
+                List<com.accubook.accounting.posting.EntryLine> entries = delta > 0
+                        ? List.of(com.accubook.accounting.posting.EntryLine.debit(stockLedger, amount),
+                                  com.accubook.accounting.posting.EntryLine.credit(changeLedger, amount))
+                        : List.of(com.accubook.accounting.posting.EntryLine.debit(changeLedger, amount),
+                                  com.accubook.accounting.posting.EntryLine.credit(stockLedger, amount));
+                String journal;
+                try (PreparedStatement ps = connection.prepareStatement(
+                        "SELECT id FROM voucher_type WHERE code = 'JOURNAL'");
+                     ResultSet rows = ps.executeQuery()) {
+                    rows.next();
+                    journal = rows.getString(1);
+                }
+                voucherId = posting.postWithin(connection, new com.accubook.accounting.posting.PostingRequest(
+                        InventoryModule.ID, fiscalYearId, journal, date, null,
+                        "Closing stock valuation as on " + date, entries, "valuation:" + runId)).voucherId();
+            }
+
+            for (String sql : List.of(
+                    "UPDATE valuation_run SET status = 'SUPERSEDED' WHERE run_date = ? AND status <> 'SUPERSEDED'",
+                    "UPDATE valuation_run SET status = 'STALE' WHERE run_date > ? AND status = 'CURRENT'")) {
+                if (delta == 0 && sql.contains("STALE")) {
+                    continue;
+                }
+                try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                    ps.setString(1, date.toString());
+                    ps.executeUpdate();
+                }
+            }
+            try (PreparedStatement ps = connection.prepareStatement("INSERT INTO valuation_run (id, run_date, value_e4, "
+                    + "voucher_id, status, created_at) VALUES (?, ?, ?, ?, 'CURRENT', ?)")) {
+                ps.setString(1, runId);
+                ps.setString(2, date.toString());
+                ps.setLong(3, value);
+                ps.setString(4, voucherId);
+                ps.setLong(5, now());
+                ps.executeUpdate();
+            }
+        });
+        return valuationRuns().stream().filter(r -> r.id().equals(runId)).findFirst().orElseThrow();
+    }
+
+    /** Every valuation run, newest date first. */
+    public List<ValuationRun> valuationRuns() {
+        return read(connection -> list(connection, "SELECT id, run_date, value_e4, voucher_id, status FROM valuation_run "
+                        + "ORDER BY run_date DESC, created_at DESC",
+                rows -> new ValuationRun(rows.getString(1), LocalDate.parse(rows.getString(2)),
+                        MoneyMapper.fromStored(rows.getLong(3), Scale.MONEY), rows.getString(4),
+                        ValuationRun.Status.valueOf(rows.getString(5)))));
+    }
+
+    /** The last entry on or before a date for every item and warehouse that has one. */
+    private static final String POSITIONS_AS_OF = """
+            SELECT e.item_id, e.warehouse_id, e.quantity_after_e4, e.value_after_e4
+            FROM valuation_entry e
+            WHERE e.entry_date <= ?
+              AND NOT EXISTS (SELECT 1 FROM valuation_entry n
+                              WHERE n.item_id = e.item_id AND n.warehouse_id = e.warehouse_id
+                                AND n.entry_date <= ?
+                                AND (n.entry_date > e.entry_date
+                                     OR (n.entry_date = e.entry_date AND n.entry_order > e.entry_order)))
+            """;
+
+    /** Movements recorded before costing existed are costed before anything is valued. */
+    private static void costEverythingUncosted(Connection connection) throws SQLException {
+        List<String[]> pending = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement("SELECT m.item_id, MIN(m.movement_date) "
+                + "FROM stock_movement m WHERE NOT EXISTS (SELECT 1 FROM valuation_entry e WHERE e.movement_id = m.id) "
+                + "GROUP BY m.item_id");
+             ResultSet rows = ps.executeQuery()) {
+            while (rows.next()) {
+                pending.add(new String[]{rows.getString(1), rows.getString(2)});
+            }
+        }
+        for (String[] item : pending) {
+            Costing.recost(connection, item[0], LocalDate.parse(item[1]));
+        }
+    }
+
+    private static String openFiscalYear(Connection connection, LocalDate date) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT id, is_closed FROM fiscal_year "
+                + "WHERE start_date <= ? AND end_date >= ?")) {
+            ps.setString(1, date.toString());
+            ps.setString(2, date.toString());
+            try (ResultSet rows = ps.executeQuery()) {
+                if (!rows.next()) {
+                    throw new InventoryException("No fiscal year covers " + date);
+                }
+                if (rows.getInt(2) == 1) {
+                    throw new InventoryException("The fiscal year containing " + date + " is closed");
+                }
+                return rows.getString(1);
+            }
+        }
+    }
+
+    /**
+     * The ledger a valuation posts to, created the first time it is needed:
+     * a build without inventory never shows it (P2-1). If a user ledger already
+     * has the name, the system ledger takes a distinct one.
+     */
+    private String systemLedger(Connection connection, String code, String name, String groupCode)
+            throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT id FROM ledger WHERE system_code = ?")) {
+            ps.setString(1, code);
+            try (ResultSet rows = ps.executeQuery()) {
+                if (rows.next()) {
+                    return rows.getString(1);
+                }
+            }
+        }
+        String id = Ids.newIdString();
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO ledger (id, group_id, system_code, name, "
+                + "is_system, created_at, updated_at) SELECT ?, g.id, ?, CASE WHEN EXISTS (SELECT 1 FROM ledger "
+                + "WHERE lower(name) = lower(?)) THEN ? || ' (AccuBook)' ELSE ? END, 1, ?, ? "
+                + "FROM ledger_group g WHERE g.system_code = ?")) {
+            ps.setString(1, id);
+            ps.setString(2, code);
+            ps.setString(3, name);
+            ps.setString(4, name);
+            ps.setString(5, name);
+            ps.setLong(6, now());
+            ps.setLong(7, now());
+            ps.setString(8, groupCode);
+            if (ps.executeUpdate() == 0) {
+                throw new InventoryException("The " + groupCode + " group is missing from the chart of accounts");
+            }
+        }
+        return id;
+    }
+
     // =============================================================== helpers
 
     private static final String ITEM_SELECT =
-            "SELECT id, name, sku, kind, unit_id, category_id, hsn_sac, description, is_active FROM item";
+            "SELECT id, name, sku, kind, unit_id, category_id, hsn_sac, description, is_active, costing_method FROM item";
 
     private static Item mapItem(ResultSet rows) throws SQLException {
         return new Item(rows.getString(1), rows.getString(2), rows.getString(3),
                 ItemKind.valueOf(rows.getString(4)), rows.getString(5), rows.getString(6),
-                rows.getString(7), rows.getString(8), rows.getInt(9) == 1);
+                rows.getString(7), rows.getString(8), rows.getInt(9) == 1,
+                CostingMethod.valueOf(rows.getString(10)));
     }
 
     private void require(String operation) {

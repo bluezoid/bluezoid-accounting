@@ -17,14 +17,16 @@ class InventoryModuleTest {
     private static final LocalDate DAY = LocalDate.of(2026, 5, 1);
 
     @Test
-    @DisplayName("P4 boundary: the module reaches neither persistence nor licensing")
+    @DisplayName("P4 boundary: the module reaches neither persistence nor licensing; accounting only to post")
     void boundary() {
         ModuleDescriptor descriptor = InventoryModule.class.getModule().getDescriptor();
         Set<String> requires = descriptor.requires().stream()
                 .map(ModuleDescriptor.Requires::name).collect(Collectors.toSet());
 
-        assertThat(requires).doesNotContain("accubook.persistence", "accubook.licensing",
-                "accubook.app", "accubook.accounting");
+        // accubook.accounting is the kernel posting core, which P4 lets a
+        // feature use: a valuation run posts its closing-stock voucher (P8-4).
+        assertThat(requires).doesNotContain("accubook.persistence", "accubook.licensing", "accubook.app",
+                "accubook.trade", "accubook.sales.invoicing", "accubook.purchase.billing");
         assertThat(descriptor.provides()).anySatisfy(p ->
                 assertThat(p.service()).isEqualTo("com.accubook.module.FeatureModule"));
     }
