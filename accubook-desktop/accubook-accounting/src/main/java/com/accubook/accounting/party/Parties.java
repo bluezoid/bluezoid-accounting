@@ -1,5 +1,6 @@
 package com.accubook.accounting.party;
 
+import com.accubook.module.ModuleTransactions;
 import com.accubook.persistence.connection.Database;
 import com.accubook.platform.id.Ids;
 import com.accubook.platform.money.MoneyMapper;
@@ -31,10 +32,36 @@ import java.util.Optional;
  */
 public final class Parties {
 
-    private final Database database;
+    private final ModuleTransactions transactions;
 
+    /**
+     * Parties over the guarded transactions every caller outside the
+     * persistence layer is given - the UI and feature modules hold no
+     * {@code Database}.
+     */
+    public Parties(ModuleTransactions transactions) {
+        this.transactions = Objects.requireNonNull(transactions, "transactions");
+    }
+
+    /** For kernel code that does hold a {@code Database}. */
     public Parties(Database database) {
-        this.database = Objects.requireNonNull(database, "database");
+        this(over(Objects.requireNonNull(database, "database")));
+    }
+
+    private static ModuleTransactions over(Database database) {
+        return new ModuleTransactions() {
+            @Override
+            public <T> T inTransaction(Work<T> work) throws SQLException {
+                return database.inTransaction(work::execute);
+            }
+
+            @Override
+            public <T> T read(Work<T> work) throws SQLException {
+                try (Connection connection = database.openReadConnection()) {
+                    return work.execute(connection);
+                }
+            }
+        };
     }
 
     // ---------------------------------------------------------------- reads
@@ -428,27 +455,30 @@ public final class Parties {
     }
 
     private List<Party> queryList(String where, List<String> parameters) {
-        List<Party> parties = new ArrayList<>();
-        try (Connection connection = database.openReadConnection();
-             PreparedStatement ps = connection.prepareStatement(
-                     baseSelect() + " " + where + " ORDER BY l.name")) {
-            for (int i = 0; i < parameters.size(); i++) {
-                ps.setString(i + 1, parameters.get(i));
-            }
-            try (ResultSet rows = ps.executeQuery()) {
-                while (rows.next()) {
-                    parties.add(map(rows));
+        try {
+            return transactions.read(connection -> {
+                List<Party> parties = new ArrayList<>();
+                try (PreparedStatement ps = connection.prepareStatement(
+                        baseSelect() + " " + where + " ORDER BY l.name")) {
+                    for (int i = 0; i < parameters.size(); i++) {
+                        ps.setString(i + 1, parameters.get(i));
+                    }
+                    try (ResultSet rows = ps.executeQuery()) {
+                        while (rows.next()) {
+                            parties.add(map(rows));
+                        }
+                    }
                 }
-            }
+                return parties;
+            });
         } catch (SQLException e) {
             throw new PartyException("Could not read parties", e);
         }
-        return parties;
     }
 
     private void execute(SqlWork work, String description) {
         try {
-            database.inTransaction(connection -> {
+            transactions.inTransaction(connection -> {
                 work.run(connection);
                 return null;
             });
