@@ -60,7 +60,7 @@ public final class Schemas {
     public static List<Migration> companyDatabase() {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
                 COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
-                COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS);
+                COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION);
     }
 
     /**
@@ -1219,4 +1219,88 @@ public final class Schemas {
 
             """.formatted(parent, parentColumn);
     }
+
+    /**
+     * Phase 8 valuation (periodic 5a): persisted costing per item and warehouse
+     * (A-1), so the value of stock at any past date is read, not reconstructed
+     * from today's quantities (D-24).
+     *
+     * <p>{@code valuation_entry}, {@code fifo_layer} and {@code fifo_consumption}
+     * are derived from the movement log in costing order (date, then entry
+     * order) and are re-derived forward from a backdated entry's date (P8-3).
+     * The movement log stays the record. {@code valuation_run} records each
+     * posted closing-stock valuation and whether later entries made it stale.
+     *
+     * <p>All owned by {@code inventory}.
+     */
+    private static final Migration COMPANY_V9_VALUATION = new Migration(9, "inventory valuation", """
+            -- P8-1: weighted average (moving, P8-2) or FIFO; LIFO is not permitted (AS 2).
+            ALTER TABLE item ADD COLUMN costing_method TEXT NOT NULL DEFAULT 'WEIGHTED_AVERAGE'
+                CHECK (costing_method IN ('WEIGHTED_AVERAGE', 'FIFO'));
+
+            CREATE TRIGGER item_costing_method_fixed_once_moved
+            BEFORE UPDATE OF costing_method ON item
+            WHEN NEW.costing_method IS NOT OLD.costing_method
+             AND EXISTS (SELECT 1 FROM stock_movement WHERE item_id = OLD.id)
+            BEGIN
+                SELECT RAISE(ABORT, 'This item has stock movements; its costing method cannot change');
+            END;
+
+            CREATE TABLE valuation_entry (
+                id                TEXT    NOT NULL PRIMARY KEY,
+                movement_id       TEXT    NOT NULL REFERENCES stock_movement (id),
+                item_id           TEXT    NOT NULL REFERENCES item (id),
+                warehouse_id      TEXT    NOT NULL REFERENCES warehouse (id),
+                entry_date        TEXT    NOT NULL,
+                -- Costing order within a date: the movement's insertion order.
+                entry_order       INTEGER NOT NULL,
+                quantity_e4       INTEGER NOT NULL CHECK (quantity_e4 <> 0),
+                value_e4          INTEGER NOT NULL,
+                quantity_after_e4 INTEGER NOT NULL CHECK (quantity_after_e4 >= 0),
+                value_after_e4    INTEGER NOT NULL CHECK (value_after_e4 >= 0),
+                -- Nothing on hand is worth nothing.
+                CHECK (quantity_after_e4 > 0 OR value_after_e4 = 0),
+                UNIQUE (movement_id, warehouse_id)
+            ) STRICT;
+
+            CREATE INDEX idx_valuation_entry_position
+                ON valuation_entry (item_id, warehouse_id, entry_date, entry_order);
+
+            CREATE TABLE fifo_layer (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                entry_id        TEXT    NOT NULL UNIQUE REFERENCES valuation_entry (id),
+                item_id         TEXT    NOT NULL REFERENCES item (id),
+                warehouse_id    TEXT    NOT NULL REFERENCES warehouse (id),
+                layer_date      TEXT    NOT NULL,
+                layer_order     INTEGER NOT NULL,
+                quantity_e4     INTEGER NOT NULL CHECK (quantity_e4 > 0),
+                value_e4        INTEGER NOT NULL CHECK (value_e4 >= 0)
+            ) STRICT;
+
+            CREATE INDEX idx_fifo_layer_position ON fifo_layer (item_id, warehouse_id, layer_date, layer_order);
+
+            CREATE TABLE fifo_consumption (
+                id           TEXT    NOT NULL PRIMARY KEY,
+                entry_id     TEXT    NOT NULL REFERENCES valuation_entry (id),
+                layer_id     TEXT    NOT NULL REFERENCES fifo_layer (id),
+                quantity_e4  INTEGER NOT NULL CHECK (quantity_e4 > 0),
+                value_e4     INTEGER NOT NULL CHECK (value_e4 >= 0)
+            ) STRICT;
+
+            CREATE INDEX idx_fifo_consumption_layer ON fifo_consumption (layer_id);
+            CREATE INDEX idx_fifo_consumption_entry ON fifo_consumption (entry_id);
+
+            CREATE TABLE valuation_run (
+                id          TEXT    NOT NULL PRIMARY KEY,
+                run_date    TEXT    NOT NULL,
+                value_e4    INTEGER NOT NULL CHECK (value_e4 >= 0),
+                -- The closing-stock voucher; null when nothing needed posting.
+                voucher_id  TEXT REFERENCES voucher (id),
+                status      TEXT    NOT NULL DEFAULT 'CURRENT'
+                    CHECK (status IN ('CURRENT', 'STALE', 'SUPERSEDED')),
+                created_at  INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE INDEX idx_valuation_run_date ON valuation_run (run_date, status);
+            """);
 }

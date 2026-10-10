@@ -21,7 +21,8 @@ public final class InventoryModule implements FeatureModule {
 
     /** Every table this module owns. The persistence guard reads this. */
     static final Set<String> TABLES = Set.of(
-            "unit", "item_category", "item", "warehouse", "stock", "stock_movement");
+            "unit", "item_category", "item", "warehouse", "stock", "stock_movement",
+            "valuation_entry", "fifo_layer", "fifo_consumption", "valuation_run");
 
     @Override
     public ModuleId id() {
@@ -43,10 +44,10 @@ public final class InventoryModule implements FeatureModule {
         return TABLES;
     }
 
-    /** Migration 5 created the inventory tables. */
+    /** Migration 9 completed the inventory tables (valuation). */
     @Override
     public int requiredSchemaVersion() {
-        return 5;
+        return 9;
     }
 
     /**
