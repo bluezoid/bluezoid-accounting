@@ -17,6 +17,7 @@
     <module>accubook-persistence</module>
     <module>accubook-module-api</module>
     <module>accubook-licensing</module>
+    <module>accubook-tax</module>
     <module>accubook-accounting</module>
     <module>accubook-app</module>
     <module>accubook-inventory</module>
@@ -76,6 +77,11 @@
       <dependency>
         <groupId>com.accubook</groupId>
         <artifactId>accubook-accounting</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.accubook</groupId>
+        <artifactId>accubook-tax</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
