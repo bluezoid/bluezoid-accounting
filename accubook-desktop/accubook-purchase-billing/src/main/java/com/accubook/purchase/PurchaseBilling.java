@@ -49,7 +49,7 @@ public final class PurchaseBilling {
         this.engine = new DocumentEngine(DocumentKind.Side.PURCHASE, PurchaseBillingModule.ID, transactions, entitlement,
                 posting, stock, rules, clock);
         this.settlements = new SettlementEngine(DocumentKind.Side.PURCHASE, PurchaseBillingModule.ID, transactions, entitlement,
-                posting, clock);
+                posting, rules, clock);
     }
 
     /** Payments, allocations, outstanding and aging for this side. */

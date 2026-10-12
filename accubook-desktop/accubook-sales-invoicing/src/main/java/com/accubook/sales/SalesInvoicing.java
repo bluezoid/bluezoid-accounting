@@ -49,7 +49,7 @@ public final class SalesInvoicing {
         this.engine = new DocumentEngine(DocumentKind.Side.SALES, SalesInvoicingModule.ID, transactions, entitlement,
                 posting, stock, rules, clock);
         this.settlements = new SettlementEngine(DocumentKind.Side.SALES, SalesInvoicingModule.ID, transactions, entitlement,
-                posting, clock);
+                posting, rules, clock);
     }
 
     /** Receipts, allocations, outstanding and aging for this side. */

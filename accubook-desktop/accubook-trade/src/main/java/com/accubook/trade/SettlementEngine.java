@@ -11,6 +11,11 @@ import com.accubook.module.ModuleTransactions;
 import com.accubook.platform.id.Ids;
 import com.accubook.platform.money.MoneyMapper;
 import com.accubook.platform.money.Scale;
+import com.accubook.tax.RulePack;
+import com.accubook.tax.RulePackException;
+import com.accubook.tax.RulePacks;
+import com.accubook.tax.Withholding;
+import com.accubook.tax.WithholdingSection;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -24,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Receipts (sales side) and payments (purchase side), allocations, and the
@@ -50,6 +56,7 @@ public final class SettlementEngine {
     private final EntitlementGuard entitlement;
     private final TransactionalPosting posting;
     private final Clock clock;
+    private final Supplier<RulePack> rules;
 
     private final String settlements;
     private final String allocations;
@@ -57,6 +64,14 @@ public final class SettlementEngine {
 
     public SettlementEngine(DocumentKind.Side side, ModuleId module, ModuleTransactions transactions,
                             EntitlementGuard entitlement, TransactionalPosting posting, Clock clock) {
+        this(side, module, transactions, entitlement, posting, RulePacks::bundledPack, clock);
+    }
+
+    /** @param rules the active rule pack, to check the section a customer deducted TDS under */
+    public SettlementEngine(DocumentKind.Side side, ModuleId module, ModuleTransactions transactions,
+                            EntitlementGuard entitlement, TransactionalPosting posting, Supplier<RulePack> rules,
+                            Clock clock) {
+        this.rules = Objects.requireNonNull(rules, "rules");
         this.side = Objects.requireNonNull(side, "side");
         this.module = Objects.requireNonNull(module, "module");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
@@ -89,6 +104,7 @@ public final class SettlementEngine {
         write("record the " + noun(), connection -> {
             requireParty(connection, request.partyId());
             requireCashOrBank(connection, request.accountLedgerId());
+            String tdsSection = tdsSection(request);
             BigDecimal allocated = request.allocations().stream()
                     .map(AllocationRequest::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
             if (allocated.compareTo(request.amount()) > 0) {
@@ -104,19 +120,27 @@ public final class SettlementEngine {
             String narration = (receipts() ? "Receipt " : "Payment ") + number
                     + (request.referenceNo() == null ? "" : " - " + request.referenceNo());
             // Receipt: Dr cash/bank, Cr customer. Payment: Dr vendor, Cr cash/bank.
-            List<EntryLine> entries = receipts()
-                    ? List.of(EntryLine.debit(request.accountLedgerId(), request.amount()),
-                              EntryLine.credit(partyLedger, request.amount()))
-                    : List.of(EntryLine.debit(partyLedger, request.amount()),
-                              EntryLine.credit(request.accountLedgerId(), request.amount()));
+            // TDS the customer deducted: the bank gets the rest, TDS Receivable the deduction.
+            BigDecimal tds = request.tdsDeducted();
+            List<EntryLine> entries = new ArrayList<>(3);
+            if (receipts()) {
+                entries.add(EntryLine.debit(request.accountLedgerId(), request.amount().subtract(tds)));
+                if (tds.signum() > 0) {
+                    entries.add(EntryLine.debit(Lookups.ledgerByCode(connection, "TDS_RECEIVABLE"), tds));
+                }
+                entries.add(EntryLine.credit(partyLedger, request.amount()));
+            } else {
+                entries.add(EntryLine.debit(partyLedger, request.amount()));
+                entries.add(EntryLine.credit(request.accountLedgerId(), request.amount()));
+            }
             PostedVoucher voucher = posting.postWithin(connection, new PostingRequest(module, year.id(),
                     Lookups.voucherType(connection, receipts() ? "RECEIPT" : "PAYMENT"), request.date(), number,
                     narration, entries, "settlement:" + id));
 
             try (PreparedStatement ps = connection.prepareStatement("INSERT INTO " + settlements
                     + " (id, number, party_id, settlement_date, amount_e4, account_ledger_id, mode, reference_no, "
-                    + "instrument_date, fiscal_year_id, voucher_id, narration, created_at, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    + "instrument_date, fiscal_year_id, voucher_id, narration, created_at, updated_at, tds_e4, "
+                    + "tds_section) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 ps.setString(1, id);
                 ps.setString(2, number);
                 ps.setString(3, request.partyId());
@@ -131,7 +155,12 @@ public final class SettlementEngine {
                 ps.setString(12, blankToNull(request.narration()));
                 ps.setLong(13, now());
                 ps.setLong(14, now());
+                ps.setLong(15, money(tds));
+                ps.setString(16, tdsSection);
                 ps.executeUpdate();
+            }
+            if (tds.signum() > 0) {
+                recordReceivable(connection, id, request, tdsSection);
             }
             for (AllocationRequest allocation : request.allocations()) {
                 insertAllocation(connection, Allocation.SourceType.SETTLEMENT, id, request.date(), allocation);
@@ -211,6 +240,13 @@ public final class SettlementEngine {
             PostedVoucher reversal = posting.reverseWithin(connection, voucherId, new ReversalRequest(module,
                     year.id(), cancellationDate, "Cancelled " + number + ": " + reason.strip(), null,
                     "settlement-cancel:" + settlementId));
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE withholding_entry SET status = "
+                    + "'CANCELLED', cancelled_date = ? WHERE source_type = 'SALES_SETTLEMENT' AND source_id = ? "
+                    + "AND status = 'ACTIVE'")) {
+                ps.setString(1, cancellationDate.toString());
+                ps.setString(2, settlementId);
+                ps.executeUpdate();
+            }
             try (PreparedStatement ps = connection.prepareStatement("UPDATE " + settlements
                     + " SET status = 'CANCELLED', cancellation_voucher_id = ?, cancellation_reason = ?, updated_at = ? "
                     + "WHERE id = ?")) {
@@ -371,6 +407,52 @@ public final class SettlementEngine {
         return new Aging(asOf, outstanding(asOf), unallocatedCredits(asOf));
     }
 
+    // ============================================================ TDS (P9c)
+
+    /**
+     * The section a customer deducted under, checked to be a TDS section in
+     * force on the receipt's date. The customer decides the amount; it is
+     * recorded as stated, to be matched against Form 26AS.
+     */
+    private String tdsSection(SettlementRequest request) {
+        if (request.tdsDeducted().signum() == 0) {
+            return null;
+        }
+        if (!receipts()) {
+            throw new TradeException("TDS on a purchase is deducted on the bill, not on the payment");
+        }
+        String code = request.tdsSection().strip().toUpperCase(java.util.Locale.ROOT);
+        try {
+            Withholding.resolve(rules.get(), WithholdingSection.Kind.TDS, code, null, request.date());
+        } catch (RulePackException e) {
+            throw new TradeException(e.getMessage(), e);
+        }
+        return code;
+    }
+
+    private void recordReceivable(Connection connection, String settlementId, SettlementRequest request,
+                                  String section) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO withholding_entry (id, kind, direction, "
+                + "source_type, source_id, party_id, section, entry_date, base_e4, taxed_base_e4, rate_e4, amount_e4, "
+                + "rule_pack_version, created_at) VALUES (?, 'TDS', 'RECEIVABLE', 'SALES_SETTLEMENT', ?, ?, ?, ?, ?, ?, "
+                + "?, ?, ?, ?)")) {
+            BigDecimal rate = request.tdsDeducted().multiply(BigDecimal.valueOf(100))
+                    .divide(request.amount(), Scale.TAX_RATE.digits(), java.math.RoundingMode.HALF_UP);
+            ps.setString(1, Ids.newIdString());
+            ps.setString(2, settlementId);
+            ps.setString(3, request.partyId());
+            ps.setString(4, section);
+            ps.setString(5, request.date().toString());
+            ps.setLong(6, money(request.amount()));
+            ps.setLong(7, money(request.amount()));
+            ps.setLong(8, MoneyMapper.toStored(rate, Scale.TAX_RATE));
+            ps.setLong(9, money(request.tdsDeducted()));
+            ps.setString(10, rules.get().version());
+            ps.setLong(11, now());
+            ps.executeUpdate();
+        }
+    }
+
     // =============================================================== helpers
 
     private void insertAllocation(Connection connection, Allocation.SourceType sourceType, String sourceId,
@@ -512,8 +594,8 @@ public final class SettlementEngine {
         try (PreparedStatement ps = connection.prepareStatement("SELECT s.id, s.number, s.party_id, s.settlement_date, "
                 + "s.amount_e4, s.account_ledger_id, s.mode, s.reference_no, s.status, s.voucher_id, "
                 + "s.amount_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM " + allocations + " a "
-                + "WHERE a.source_type = 'SETTLEMENT' AND a.source_id = s.id AND a.removed_date IS NULL), 0) "
-                + "FROM " + settlements + " s" + where)) {
+                + "WHERE a.source_type = 'SETTLEMENT' AND a.source_id = s.id AND a.removed_date IS NULL), 0), "
+                + "s.tds_e4, s.tds_section FROM " + settlements + " s" + where)) {
             for (int i = 0; i < parameters.length; i++) {
                 ps.setString(i + 1, parameters[i]);
             }
@@ -525,7 +607,8 @@ public final class SettlementEngine {
                             rows.getString(6), PaymentMode.valueOf(rows.getString(7)), rows.getString(8), cancelled,
                             rows.getString(10),
                             cancelled ? BigDecimal.ZERO.setScale(2) : MoneyMapper.fromStored(rows.getLong(11), Scale.MONEY)
-                                    .setScale(2)));
+                                    .setScale(2), MoneyMapper.fromStored(rows.getLong(12), Scale.MONEY),
+                            rows.getString(13)));
                 }
             }
         }
