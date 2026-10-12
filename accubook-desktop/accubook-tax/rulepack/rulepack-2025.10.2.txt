@@ -1,6 +1,6 @@
 format=accubook-rulepack/1
-version=2025.10.1
-issued=2026-10-10
+version=2025.10.2
+issued=2026-10-12
 # UNVERIFIED: compiled from public secondary sources for development. A
 # chartered accountant must verify every rate, threshold and date before any
 # release (OPEN_DECISIONS V-1). Do not treat as legal advice.
@@ -10,6 +10,8 @@ source=https://blog.tdsman.com/2025/03/tds-tcs-changes-w-e-f-1st-april-2025/
 source=https://taxguru.in/goods-and-service-tax/56th-gst-council-meeting-overview.html
 source=https://cleartax.in/s/gst-compensation-cess
 source=https://www.taxaj.com/learn/?p=843
+source=https://www.gstgyaan.com/notification-no-14-2019-central-tax-dated-07-03-2019-turnover-limit-for-composition-levy
+source=https://lexplosion.in/?p=35900
 
 # GST state codes. UNION_TERRITORY = UTGST applies (no legislature).
 # Delhi, Puducherry and Jammu and Kashmir have legislatures: SGST, so STATE.
@@ -90,3 +92,18 @@ COMPOSITION_LIMIT_SPECIAL_STATES|2019-04-01||7500000
 
 [tcs]
 206C(1H)|2020-10-01|2025-03-31|0.1|1|ANNUAL_EXCESS||5000000|Sale of goods (withdrawn from 1 Apr 2025)
+
+# States where the composition limit is COMPOSITION_LIMIT_SPECIAL_STATES
+# (Notification 14/2019-CT, from 1 Apr 2019): Arunachal Pradesh, Manipur,
+# Meghalaya, Mizoram, Nagaland, Sikkim, Tripura, Uttarakhand. The two
+# secondary sources cited agree; the official CBIC text is still to be
+# checked (V-1). Himachal Pradesh and Assam were on the 2017 list only.
+[composition-special-states]
+12|2019-04-01|
+14|2019-04-01|
+17|2019-04-01|
+15|2019-04-01|
+13|2019-04-01|
+11|2019-04-01|
+16|2019-04-01|
+05|2019-04-01|

@@ -55,4 +55,17 @@ class BundledRulePackTest {
         assertThat(pack.section(WithholdingSection.Kind.TDS, "194I-LAND", LocalDate.of(2025, 4, 1)).orElseThrow()
                 .thresholdType()).isEqualTo(WithholdingSection.ThresholdType.MONTHLY);
     }
+
+    @Test
+    @DisplayName("composition: 1.5 crore, 75 lakh in the eight special-category states (e.g. Sikkim 11, Uttarakhand 05)")
+    void compositionLimits() {
+        RulePack pack = BUNDLED.pack();
+        java.time.LocalDate on = java.time.LocalDate.of(2026, 4, 1);
+        assertThat(pack.compositionLimit("27", on)).isEqualByComparingTo("15000000");
+        assertThat(pack.compositionLimit("11", on)).isEqualByComparingTo("7500000");
+        assertThat(pack.compositionLimit("05", on)).isEqualByComparingTo("7500000");
+        assertThat(pack.compositionLimit("02", on)).as("Himachal Pradesh left the list in 2019")
+                .isEqualByComparingTo("15000000");
+        assertThat(pack.compositionSpecialStates()).hasSize(8);
+    }
 }

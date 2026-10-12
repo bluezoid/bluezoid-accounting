@@ -58,7 +58,7 @@ class RulePacksIT {
 
     private Path signedPack(String version) throws Exception {
         String body = RulePacks.bundled(TrustedRulePackKeys.forThisBuild()).body()
-                .replace("version=2025.10.1", "version=" + version);
+                .replace("version=" + RulePacks.bundledPack().version(), "version=" + version);
         Signature signer = Signature.getInstance("Ed25519");
         signer.initSign(testKeys.getPrivate());
         signer.update(body.getBytes(StandardCharsets.UTF_8));
@@ -75,7 +75,7 @@ class RulePacksIT {
         packs.installBundled();
 
         assertThat(packs.installed()).singleElement().satisfies(i -> assertThat(i.source()).isEqualTo("BUNDLED"));
-        assertThat(packs.active().version()).isEqualTo("2025.10.1");
+        assertThat(packs.active().version()).isEqualTo("2025.10.2");
     }
 
     @Test
@@ -125,7 +125,7 @@ class RulePacksIT {
     @DisplayName("CompanyService installs the bundled pack at start and serves its rules")
     void throughCompanyService() throws Exception {
         try (CompanyService service = CompanyService.start(dir.resolve("installation"))) {
-            assertThat(service.rules().version()).isEqualTo("2025.10.1");
+            assertThat(service.rules().version()).isEqualTo("2025.10.2");
             assertThat(service.installedRulePacks()).hasSize(1);
         }
     }
