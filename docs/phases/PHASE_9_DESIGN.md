@@ -162,3 +162,40 @@ credit under s.17(5), tax on quotations and orders, exports/SEZ (P9-3).
 | **P9-12** | When a vendor's yearly total crosses the annual threshold (194C: ₹1 lakh) | **Deduct on the year's whole aggregate:** the crossing bill also bears TDS on that vendor's earlier bills in the year under the section, which were below the threshold. The section taxes the aggregate once it exceeds the limit. The reference deducts on the crossing bill alone (**R-18**), leaving the earlier credits untaxed. |
 | **P9-13** | TDS ledgers | **One TDS Payable and one TDS Receivable** under Duties & Taxes, each deduction tagged with its section, so section-wise payables come from the records. Per-section ledgers (TDS 194C Payable, …) multiply with every new section a Finance Act adds. |
 
+---
+
+## 8. P9d detailed design — returns (`taxation-returns` add-on)
+
+**Status:** DESIGN — awaiting P9-9, P9-14…P9-16.
+
+### 8.1 Packaging
+`taxation-returns` is an add-on at any tier (B-7). It **reads** what every plan
+records - documents, tax lines, withholding entries - and owns only its own
+tables: return periods, filed snapshots, imported GSTR-2B data, challans. A
+build without it records tax identically; it cannot generate returns.
+
+### 8.2 Sub-phases
+| | Scope |
+|---|---|
+| **P9d-1** | Return periods (monthly or quarterly - QRMP - from an effective-dated company setting); **GSTR-1** (B2B, B2CL, B2CS, CDNR, CDNUR, NIL, HSN, DOCS) from stored figures; validation issues; portal JSON; mark filed (snapshot + hash) |
+| **P9d-2** | **GSTR-3B** (outward, RCM inward, ITC available, exempt/nil/non-GST inward, tax payable by component) |
+| **P9d-3** | **GSTR-2B** import (portal JSON) and reconciliation against purchase bills: matched, mismatched (value, tax, date), missing either side |
+| **P9d-4** | **CMP-08** (composition, quarterly) and **GSTR-9** (annual, from the year's filed returns and books) |
+| **P9d-5** | **TDS**: challans (ITNS 281) against TDS Payable, **26Q** quarterly data, **Form 16A** data; TCS 27EQ/27D shells |
+
+### 8.3 Findings in the reference
+| ID | Finding |
+|---|---|
+| **R-19** | GSTR-1 B2CL threshold hard-coded at ₹2.5 lakh and `>=`; it is **> ₹1 lakh** from 1 Aug 2024 (rule-pack `B2CL_INVOICE`). |
+| **R-20** | GSTR-1 excludes cancelled invoices from its query, then counts cancelled ones: the DOCS "cancelled" figure is always 0 and the number ranges skip cancelled numbers. |
+| **R-21** | HSN summary reports the unit's own symbol as the UQC; the portal accepts only the GST UQC list (NOS, KGS, …). |
+
+### 8.4 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P9-9** | A composition dealer's year passes the turnover limit | **Refuse** the composition invoice that would take the year's turnover above the limit, explaining that the dealer leaves the scheme from that day and must record a regular registration from that date - after which the invoice is a tax invoice. A warning lets bills of supply continue that the law says must be tax invoices. |
+| **P9-14** | Once a return is filed | **"Mark filed" stores a snapshot** (figures + hash) and **locks the period for GST**: no new document, backdated document, or cancellation dated in it. Corrections go through a credit/debit note or amendment in an open period, as the law requires once a return is filed. Unlocking is an audited admin action with a reason. |
+| **P9-15** | Filing channel | **Generate the portal's offline-upload JSON** (schema version recorded), to be uploaded by the user or their CA. No direct filing through a GSP API - that needs a commercial GSP licence; reconsider with P13. |
+| **P9-16** | Unit codes and HSN in returns | Units gain a **GST UQC** from a list carried in the rule pack; a unit without one reports as `OTH` with a warning. A **missing HSN/SAC on a taxable line is a blocking issue**: the return can be previewed but not marked filed. |
+
