@@ -30,6 +30,13 @@ class MoneyMapperTest {
     }
 
     @Test
+    @DisplayName("stores a GST rate to four places: 18% -> 180000, the 0.125% half of 0.25% -> 1250")
+    void storesTaxRateAtScaleFour() {
+        assertThat(MoneyMapper.toStored(new BigDecimal("18"), Scale.TAX_RATE)).isEqualTo(180_000L);
+        assertThat(MoneyMapper.toStored(new BigDecimal("0.125"), Scale.TAX_RATE)).isEqualTo(1_250L);
+    }
+
+    @Test
     @DisplayName("stores an FX rate at scale 8")
     void storesFxAtScaleEight() {
         assertThat(MoneyMapper.toStored(new BigDecimal("83.12345678"), Scale.FX))

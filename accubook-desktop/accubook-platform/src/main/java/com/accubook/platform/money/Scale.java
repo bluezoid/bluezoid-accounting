@@ -38,6 +38,13 @@ public enum Scale {
     /** Percentages held as basis points: 18% is stored as 1800. Mirrors {@code Decimal(5,2)}. */
     RATE(2, "_bp"),
 
+    /**
+     * GST and cess rates, percent to four places: 18% is stored as 180000.
+     * Basis points cannot hold the half of a 0.25% slab that CGST and SGST each
+     * take (0.125%).
+     */
+    TAX_RATE(4, "_e4"),
+
     /** Exchange rates. Mirrors {@code Decimal(18,8)}. */
     FX(8, "_e8"),
 
