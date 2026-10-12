@@ -73,12 +73,3 @@ Thumbs.db
 .env
 .env.local
 signing.properties
-
-# ============================================================
-# Claude Code
-# ============================================================
-# The whole directory is local-only and is not pushed to GitHub.
-# Note: this includes the project memory and instructions, so they live
-# only on this machine - see docs/ for anything that must be shared with
-# other developers or survive a fresh clone.
-.claude/
