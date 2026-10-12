@@ -124,7 +124,7 @@ credit under s.17(5), tax on quotations and orders, exports/SEZ (P9-3).
 
 ## 7. P9c detailed design — TDS and TCS
 
-**Status:** DESIGN — awaiting P9-10…P9-13.
+**Status:** APPROVED 2026-10-12 (P9-10…P9-13 as recommended).
 
 ### 7.1 What the law fixes (not choices)
 - TDS is deducted when the amount is **credited** to the payee or paid,
