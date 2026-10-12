@@ -386,6 +386,7 @@ public final class DocumentEngine {
             if (doc.status != DocumentStatus.POSTED) {
                 throw new TradeException("Only a posted document can be cancelled; this one is " + doc.status);
             }
+            requireGstPeriodOpen(connection, doc, "cancel");
             try (PreparedStatement ps = connection.prepareStatement("SELECT number FROM " + documents
                     + " WHERE original_document_id = ? AND status = 'POSTED' LIMIT 1")) {
                 ps.setString(1, documentId);
@@ -399,7 +400,6 @@ public final class DocumentEngine {
             if (cancellationDate.isBefore(doc.date)) {
                 throw new TradeException("A document cannot be cancelled before its own date");
             }
-            requireGstPeriodOpen(connection, doc, "cancel");
             try (PreparedStatement ps = connection.prepareStatement("SELECT EXISTS (SELECT 1 FROM " + allocations
                     + " WHERE document_id = ? AND removed_date IS NULL)")) {
                 ps.setString(1, documentId);
