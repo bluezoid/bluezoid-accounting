@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-7 (2026-10-12).
 
 **Still open:** B-2 · B-5 · I-3, I-6…I-18 · N-2…N-9.
 
@@ -316,6 +316,21 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P7-5 Stock coupling:** posting an invoice/bill moves stock in the same
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
+
+## P9-5…P9-7 · P9b GST on documents — ✅ **APPROVED 2026-10-12**
+
+> As recommended in `PHASE_9_DESIGN.md` §6.2.
+>
+> - **P9-5:** place of supply is set on the document, defaults from the party
+>   (a registered party's state comes from its GSTIN), can be edited while DRAFT
+>   and is locked at posting. A B2B sale needs a valid GSTIN. An unregistered
+>   party with no state is taxed in the **company's own state** (intra-state).
+>   The reference app's fail-safe IGST is not copied.
+> - **P9-6:** tax-inclusive (MRP) prices are **deferred** until before the
+>   retail screens. P9b prices exclude tax.
+> - **P9-7:** separate ledgers for each component and direction under Duties &
+>   Taxes: Output and Input CGST/SGST/UTGST/IGST/Cess, plus RCM Payable for
+>   each component. Seeded in every plan.
 
 ## P9-1…P9-4 · Phase 9 taxation — ✅ **APPROVED 2026-10-10**
 

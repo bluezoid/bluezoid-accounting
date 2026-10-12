@@ -72,7 +72,7 @@ P9a builds and tests; the numbers are data and will change.
 
 ## 6. P9b detailed design — GST on documents
 
-**Status:** DESIGN — awaiting P9-5…P9-7.
+**Status:** APPROVED 2026-10-12 (P9-5…P9-7 as recommended).
 
 ### 6.1 Model
 - **Item tax** (inventory-owned, effective-dated, P9-2): category (`TAXABLE`,
