@@ -72,7 +72,7 @@ P9a builds and tests; the numbers are data and will change.
 
 ## 6. P9b detailed design — GST on documents
 
-**Status:** APPROVED 2026-10-12 (P9-5…P9-7 as recommended).
+**Status:** APPROVED 2026-10-12 (P9-5…P9-8 as recommended).
 
 ### 6.1 Model
 - **Item tax** (inventory-owned, effective-dated, P9-2): category (`TAXABLE`,
@@ -106,4 +106,17 @@ P9a builds and tests; the numbers are data and will change.
 | **P9-5** | Place of supply when it is not obvious | Document-level, **defaulting from the party** (a registered party's state comes from its GSTIN), editable while DRAFT, locked at posting. A **B2B** sale needs the customer's valid GSTIN. An **unregistered customer with no state** (a counter sale) defaults to the **company's own state** — intra-state, as a walk-in sale is. The reference instead fails safe to IGST, which mis-taxes every counter sale. |
 | **P9-6** | Prices entered inclusive of GST (retail MRP) | **Later.** P9b takes prices exclusive of tax, as B2B traders quote. Inclusive entry (back-calculating the taxable value) is a follow-up before retail screens. |
 | **P9-7** | GST ledgers | **Separate ledgers per component and direction** under Duties & Taxes: Output CGST/SGST/UTGST/IGST/Cess, Input CGST/SGST/UTGST/IGST/Cess, and **RCM payable** per component (reverse-charge tax must be paid in cash, so it is kept apart). The reference uses one "GST Output" and one "GST Input", found by name. Created in every plan (computation is kernel, B-7). |
+| **P9-8** | No GST registration recorded for the document date | **Refuse** the document until the company records its position (Regular, Composition or Unregistered, with state). Unregistered: no GST on sales; purchase GST from the vendor's rate is added to cost, no input credit. |
+
+### 6.3 Rules that follow from law, not choice
+- A composition dealer may not make an inter-state outward supply: refused.
+- Non-creditable GST (composition, unregistered) is part of the cost of
+  purchase (AS 2), so it is in the unit cost stock is valued at.
+- A note is taxed on the basis of the document it corrects: same place of
+  supply, supply type and, for an item, the original line's rates.
+- Reverse charge is a purchase-side flag; an unregistered company cannot use it.
+
+### 6.4 Not in P9b
+Inclusive (MRP) prices (P9-6), specific-rate cess (per unit), blocked input
+credit under s.17(5), tax on quotations and orders, exports/SEZ (P9-3).
 

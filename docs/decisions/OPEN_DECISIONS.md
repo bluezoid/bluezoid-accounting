@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-7 (2026-10-12).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-8 (2026-10-12).
 
 **Still open:** B-2 · B-5 · I-3, I-6…I-18 · N-2…N-9.
 
@@ -317,7 +317,7 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
 
-## P9-5…P9-7 · P9b GST on documents — ✅ **APPROVED 2026-10-12**
+## P9-5…P9-8 · P9b GST on documents — ✅ **APPROVED 2026-10-12**
 
 > As recommended in `PHASE_9_DESIGN.md` §6.2.
 >
@@ -331,6 +331,11 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P9-7:** separate ledgers for each component and direction under Duties &
 >   Taxes: Output and Input CGST/SGST/UTGST/IGST/Cess, plus RCM Payable for
 >   each component. Seeded in every plan.
+> - **P9-8:** a document is **refused** while the company has no GST registration
+>   recorded for its date. Every company records its position (Regular,
+>   Composition or Unregistered, with its state) once. An Unregistered company
+>   charges no GST on sales; GST on its purchase bills is computed from the
+>   vendor's rate and added to cost, with no input credit (as for composition).
 
 ## P9-1…P9-4 · Phase 9 taxation — ✅ **APPROVED 2026-10-10**
 
