@@ -60,6 +60,19 @@ public final class RulePacks {
         }
     }
 
+    /**
+     * The pack shipped inside this build, verified once. For callers without an
+     * app database - tests and tools. A running application uses
+     * {@link #active()}, which includes packs imported since the build.
+     */
+    public static RulePack bundledPack() {
+        return BundledHolder.PACK;
+    }
+
+    private static final class BundledHolder {
+        static final RulePack PACK = bundled(TrustedRulePackKeys.forThisBuild()).pack();
+    }
+
     /** Install the bundled pack if nothing newer is installed. Run at startup. */
     public void installBundled() {
         SignedRulePack.Verified bundled = bundled(trustedKeys);

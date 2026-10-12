@@ -3,6 +3,7 @@ package com.accubook.tax;
 import com.accubook.module.ModuleTransactions;
 import com.accubook.platform.id.Ids;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -89,7 +90,29 @@ public final class GstRegistrations {
 
     /** The registration in force on {@code date}, if the company had one then. */
     public Optional<GstRegistration> on(LocalDate date) {
-        return history().stream().filter(r -> !r.effectiveFrom().isAfter(date)).reduce((a, b) -> b);
+        try {
+            return transactions.read(connection -> on(connection, date));
+        } catch (SQLException e) {
+            throw new RulePackException("Could not read GST registrations: " + e.getMessage(), e);
+        }
+    }
+
+    /** The registration in force on {@code date}, read inside the caller's transaction. */
+    public static Optional<GstRegistration> on(Connection connection, LocalDate date) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT id, effective_from, scheme, gstin, "
+                + "state_code, rule_pack_version FROM gst_registration WHERE effective_from <= ? "
+                + "ORDER BY effective_from DESC LIMIT 1")) {
+            ps.setString(1, date.toString());
+            try (ResultSet rows = ps.executeQuery()) {
+                return rows.next() ? Optional.of(map(rows)) : Optional.empty();
+            }
+        }
+    }
+
+    private static GstRegistration map(ResultSet rows) throws SQLException {
+        return new GstRegistration(rows.getString(1), LocalDate.parse(rows.getString(2)),
+                GstRegistration.Scheme.valueOf(rows.getString(3)), rows.getString(4), rows.getString(5),
+                rows.getString(6));
     }
 
     /** Every registration, oldest first. */
@@ -101,9 +124,7 @@ public final class GstRegistrations {
                         + "state_code, rule_pack_version FROM gst_registration ORDER BY effective_from");
                      ResultSet rows = ps.executeQuery()) {
                     while (rows.next()) {
-                        result.add(new GstRegistration(rows.getString(1), LocalDate.parse(rows.getString(2)),
-                                GstRegistration.Scheme.valueOf(rows.getString(3)), rows.getString(4),
-                                rows.getString(5), rows.getString(6)));
+                        result.add(map(rows));
                     }
                 }
                 return result;
