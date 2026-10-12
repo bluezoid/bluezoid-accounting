@@ -101,11 +101,12 @@ final class CompanyRegistry {
 
     private static Company map(ResultSet rs) throws SQLException {
         long lastOpened = rs.getLong("last_opened_at");
+        boolean neverOpened = rs.wasNull() || lastOpened == 0;
         return new Company(
                 rs.getString("id"),
                 rs.getString("name"),
                 rs.getInt("schema_version"),
                 Instant.ofEpochMilli(rs.getLong("created_at")),
-                rs.wasNull() || lastOpened == 0 ? null : Instant.ofEpochMilli(lastOpened));
+                neverOpened ? null : Instant.ofEpochMilli(lastOpened));
     }
 }
