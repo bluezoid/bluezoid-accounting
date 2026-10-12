@@ -10,6 +10,8 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
     <!-- The kernel posting core: a valuation run posts the closing-stock voucher (P8-4). -->
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-accounting</artifactId></dependency>
+    <!-- Kernel tax rules: an item's GST rate is checked against the rule pack (P9b). -->
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-tax</artifactId></dependency>
     <!-- Deliberately NOT accubook-persistence or accubook-licensing (P4): storage
          comes through ModuleTransactions, which is always guarded, and the
          module learns its state only as a ModuleState. -->

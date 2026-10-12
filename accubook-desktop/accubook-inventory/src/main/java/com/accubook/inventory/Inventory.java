@@ -5,6 +5,10 @@ import com.accubook.module.ModuleTransactions;
 import com.accubook.platform.id.Ids;
 import com.accubook.platform.money.MoneyMapper;
 import com.accubook.platform.money.Scale;
+import com.accubook.tax.GstCalculator;
+import com.accubook.tax.RulePack;
+import com.accubook.tax.RulePackException;
+import com.accubook.tax.TaxCategory;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -356,6 +360,65 @@ public final class Inventory {
                 rows -> new StockDiscrepancy(rows.getString(1), rows.getString(2),
                         MoneyMapper.fromStored(rows.getLong(3), Scale.QUANTITY),
                         MoneyMapper.fromStored(rows.getLong(4), Scale.QUANTITY))));
+    }
+
+    // =================================================================== GST
+
+    /**
+     * P9-2: an item's GST from {@code from} until its next entry. A document
+     * line copies these as defaults, so changing them re-taxes nothing already
+     * drafted or posted. Recording the same date again corrects that entry.
+     *
+     * <p>The rate is checked against the rule pack's slabs on {@code from}. A
+     * rate the law later withdraws (28% on 22 Sep 2025) is refused on documents
+     * dated after that, until a new rate is recorded.
+     */
+    public ItemTaxRate setTax(String itemId, LocalDate from, TaxCategory category, BigDecimal gstRate,
+                              BigDecimal cessRate, RulePack rules) {
+        Objects.requireNonNull(from, "from");
+        Objects.requireNonNull(rules, "rules");
+        BigDecimal rate = gstRate == null ? BigDecimal.ZERO : gstRate;
+        BigDecimal cess = cessRate == null ? BigDecimal.ZERO : cessRate;
+        try {
+            GstCalculator.requireValid(category, rate, cess, from, rules);
+        } catch (RulePackException e) {
+            throw new InventoryException(e.getMessage(), e);
+        }
+        require("set an item's GST");
+        write("set the item's GST", connection -> {
+            if (list(connection, ITEM_SELECT + " WHERE id = ?", Inventory::mapItem, itemId).isEmpty()) {
+                throw new InventoryException("No such item: " + itemId);
+            }
+            try (PreparedStatement ps = connection.prepareStatement("INSERT INTO item_tax (id, item_id, "
+                    + "effective_from, category, gst_rate_e4, cess_rate_e4, rule_pack_version, created_at, updated_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (item_id, effective_from) DO UPDATE SET "
+                    + "category = excluded.category, gst_rate_e4 = excluded.gst_rate_e4, "
+                    + "cess_rate_e4 = excluded.cess_rate_e4, rule_pack_version = excluded.rule_pack_version, "
+                    + "updated_at = excluded.updated_at")) {
+                ps.setString(1, Ids.newIdString());
+                ps.setString(2, itemId);
+                ps.setString(3, from.toString());
+                ps.setString(4, category.name());
+                ps.setLong(5, MoneyMapper.toStored(rate.stripTrailingZeros(), Scale.TAX_RATE));
+                ps.setLong(6, MoneyMapper.toStored(cess.stripTrailingZeros(), Scale.TAX_RATE));
+                ps.setString(7, rules.version());
+                ps.setLong(8, now());
+                ps.setLong(9, now());
+                ps.executeUpdate();
+            }
+        });
+        return taxOn(itemId, from).orElseThrow();
+    }
+
+    /** The item's GST in force on {@code date}, if any has been recorded from then or earlier. */
+    public Optional<ItemTaxRate> taxOn(String itemId, LocalDate date) {
+        Objects.requireNonNull(date, "date");
+        return read(connection -> ItemTaxes.on(connection, itemId, date));
+    }
+
+    /** Every GST entry of the item, oldest first. */
+    public List<ItemTaxRate> taxHistory(String itemId) {
+        return read(connection -> ItemTaxes.history(connection, itemId));
     }
 
     // ============================================================= valuation

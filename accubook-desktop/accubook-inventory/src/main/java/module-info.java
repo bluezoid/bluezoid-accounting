@@ -2,7 +2,8 @@
  * Inventory: items, units, warehouses and stock quantities.
  *
  * <p>It requires the kernel's posting core ({@code accubook.accounting}) only to
- * post the closing-stock voucher of a valuation run (Phase 8).
+ * post the closing-stock voucher of a valuation run (Phase 8), and the kernel
+ * tax rules ({@code accubook.tax}) to validate an item's GST rate (P9b).
  *
  * <p>The first optional feature module. Note what it does not require:
  * {@code accubook.persistence} (it stores through {@code ModuleTransactions},
@@ -17,6 +18,7 @@ module accubook.inventory {
     requires accubook.platform;
     requires accubook.module.api;
     requires accubook.accounting;
+    requires accubook.tax;
 
     exports com.accubook.inventory;
 

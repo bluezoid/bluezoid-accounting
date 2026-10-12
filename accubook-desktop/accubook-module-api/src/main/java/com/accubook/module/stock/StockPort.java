@@ -40,6 +40,21 @@ public interface StockPort {
     Optional<ItemFacts> item(Connection connection, String itemId) throws SQLException;
 
     /**
+     * An item's GST on a date (P9-2), as the defaults a document line copies.
+     *
+     * @param category one of {@code TAXABLE}, {@code NIL_RATED}, {@code EXEMPT},
+     *                 {@code NON_GST} - named in the kernel tax module, which
+     *                 this API does not depend on
+     * @param gstRate  percent, zero unless taxable
+     * @param hsnSac   the item's HSN or SAC code, or null
+     */
+    record ItemTax(LocalDate effectiveFrom, String category, BigDecimal gstRate, BigDecimal cessRate, String hsnSac) {
+    }
+
+    /** The item's GST in force on {@code date}; empty if none has been recorded from that date or earlier. */
+    Optional<ItemTax> taxOn(Connection connection, String itemId, LocalDate date) throws SQLException;
+
+    /**
      * Record one movement and update quantities on hand.
      *
      * @param warehouseId    receiving warehouse for an incoming kind, issuing

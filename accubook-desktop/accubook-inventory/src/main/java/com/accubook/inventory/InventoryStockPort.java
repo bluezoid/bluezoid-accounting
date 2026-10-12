@@ -38,6 +38,12 @@ public final class InventoryStockPort implements StockPort {
     }
 
     @Override
+    public Optional<ItemTax> taxOn(Connection connection, String itemId, LocalDate date) throws SQLException {
+        return ItemTaxes.on(connection, itemId, date).map(t -> new ItemTax(t.effectiveFrom(), t.category().name(),
+                t.gstRate(), t.cessRate(), t.hsnSac()));
+    }
+
+    @Override
     public void move(Connection connection, Kind kind, String itemId, String warehouseId, BigDecimal quantity,
                      BigDecimal unitCost, LocalDate date, String sourceType, String sourceId, String narration,
                      String costSourceType, String costSourceId) throws SQLException {
