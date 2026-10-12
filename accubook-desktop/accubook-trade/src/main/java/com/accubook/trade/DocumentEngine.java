@@ -258,6 +258,7 @@ public final class DocumentEngine {
             }
             Lookups.FiscalYearRow year = Lookups.fiscalYearFor(connection, doc.date);
             GstBasis basis = requireBasisCurrent(connection, doc);
+            requireWithinCompositionLimit(connection, doc, basis);
             if (doc.kind.isNote()) {
                 requireWithinUncredited(connection, doc);
                 requireItemsWithinOriginal(connection, doc);
@@ -1077,6 +1078,45 @@ public final class DocumentEngine {
             return new GstContext(basis, untaxed == null, placeKind, rateDate, pack, untaxed);
         } catch (RulePackException e) {
             throw new TradeException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * P9-9: a composition dealer leaves the scheme on the day its turnover for
+     * the financial year exceeds the limit, and must issue tax invoices from
+     * then. So the bill of supply that would take it over is refused; the user
+     * records a regular registration from that date and the invoice is taxed.
+     * Turnover here is this company file's posted invoices less credit notes.
+     */
+    private void requireWithinCompositionLimit(Connection connection, Header doc, GstBasis basis)
+            throws SQLException {
+        if (doc.kind != DocumentKind.SALES_INVOICE || basis.scheme() != GstRegistration.Scheme.COMPOSITION) {
+            return;
+        }
+        LocalDate from = Withholding.yearStart(doc.date);
+        long soFarE4;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT COALESCE(SUM(CASE kind WHEN 'SALES_INVOICE' "
+                + "THEN taxable_e4 ELSE -taxable_e4 END), 0) FROM sales_document WHERE status = 'POSTED' "
+                + "AND document_date BETWEEN ? AND ?")) {
+            ps.setString(1, from.toString());
+            ps.setString(2, from.plusYears(1).minusDays(1).toString());
+            try (ResultSet rows = ps.executeQuery()) {
+                rows.next();
+                soFarE4 = rows.getLong(1);
+            }
+        }
+        BigDecimal turnover = MoneyMapper.fromStored(soFarE4, Scale.MONEY).add(doc.taxable);
+        BigDecimal limit;
+        try {
+            limit = rules.get().compositionLimit(basis.supplierState(), doc.date);
+        } catch (RulePackException e) {
+            throw new TradeException(e.getMessage(), e);
+        }
+        if (turnover.compareTo(limit) > 0) {
+            throw new TradeException("This invoice takes the year's turnover to " + plain(turnover)
+                    + ", above the composition limit of " + plain(limit) + ". A composition dealer leaves the scheme "
+                    + "from that day: record a regular GST registration from " + doc.date + ", then save and post "
+                    + "this invoice again as a tax invoice.");
         }
     }
 

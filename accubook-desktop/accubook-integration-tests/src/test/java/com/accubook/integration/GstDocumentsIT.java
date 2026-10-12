@@ -416,4 +416,23 @@ class GstDocumentsIT {
         registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27", nextYear, RULES);
         assertThat(registrations.on(nextYear).orElseThrow().scheme()).isEqualTo(GstRegistration.Scheme.COMPOSITION);
     }
+
+    @Test
+    @DisplayName("P9-9: the bill of supply that takes a composition dealer over 1.5 crore is refused; "
+            + "after a regular registration it posts as a tax invoice")
+    void compositionLimitCrossedInYear() {
+        compositionScheme();
+        Party customer = party("Big Buyer", PartyRole.CUSTOMER, null, null);
+        sales.post(sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), MAY_10,
+                List.of(LineRequest.text("Goods", d("1"), d("15000000"))))).id());   // exactly the limit
+        Document crossing = sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), JUNE_10,
+                List.of(LineRequest.text("Goods", d("1"), d("1000")))));
+
+        assertThatThrownBy(() -> sales.post(crossing.id())).hasMessageContaining("above the composition limit");
+
+        registrations.register(GstRegistration.Scheme.REGULAR, COMPANY_MH, "27", JUNE_10, RULES);
+        Document resaved = sales.updateDraft(crossing.id(), DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(),
+                JUNE_10, List.of(LineRequest.text("Goods", d("1"), d("1000")).withTax(TaxCategory.TAXABLE, d("18"), null))));
+        assertThat(sales.post(resaved.id()).tax()).isEqualByComparingTo("180");
+    }
 }
