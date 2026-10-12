@@ -397,4 +397,23 @@ class GstDocumentsIT {
         assertThat(net("Output UTGST")).isEqualByComparingTo("-90");
         assertThat(net("Output SGST")).isEqualByComparingTo("0");
     }
+
+    @Test
+    @DisplayName("composition is refused when last year's turnover exceeds 1.5 crore, allowed once a note brings it down")
+    void compositionEligibility() {
+        regular();
+        Party customer = party("Big Buyer", PartyRole.CUSTOMER, null, null);
+        Document inv = sales.post(sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), MAY_10,
+                List.of(LineRequest.text("Training", d("1"), d("15000001")).withTax(TaxCategory.EXEMPT, null, null))))
+                .id());
+        LocalDate nextYear = LocalDate.of(2027, 4, 1);
+
+        assertThatThrownBy(() -> registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27",
+                nextYear, RULES)).hasMessageContaining("above the limit of 15000000");
+
+        sales.post(sales.createDraft(DraftRequest.note(DocumentKind.CREDIT_NOTE, customer.id(), JUNE_10, inv.id(),
+                List.of(LineRequest.text("Training", d("1"), d("1")).withTax(TaxCategory.EXEMPT, null, null)))).id());
+        registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27", nextYear, RULES);
+        assertThat(registrations.on(nextYear).orElseThrow().scheme()).isEqualTo(GstRegistration.Scheme.COMPOSITION);
+    }
 }

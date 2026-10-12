@@ -2,7 +2,10 @@ package com.accubook.tax;
 
 import com.accubook.module.ModuleTransactions;
 import com.accubook.platform.id.Ids;
+import com.accubook.platform.money.MoneyMapper;
+import com.accubook.platform.money.Scale;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -34,6 +37,12 @@ public final class GstRegistrations {
      * Record a registration from {@code effectiveFrom}, validated against
      * {@code rules}: a registered scheme needs a valid GSTIN (format, state,
      * check character) whose state is the company's state.
+     *
+     * <p>Composition is refused when the preceding financial year's turnover
+     * exceeds the limit for the state (P9b). The turnover is what this
+     * company file knows: posted sales invoices less credit notes, at taxable
+     * value. The law counts aggregate turnover across every registration under
+     * the PAN, which a single company file cannot see.
      */
     public GstRegistration register(GstRegistration.Scheme scheme, String gstin, String stateCode,
                                     LocalDate effectiveFrom, RulePack rules) {
@@ -57,6 +66,9 @@ public final class GstRegistrations {
                 throw new RulePackException("GSTIN " + normalised + " is registered in state "
                         + Gstin.stateOf(normalised) + ", not " + stateCode);
             }
+        }
+        if (scheme == GstRegistration.Scheme.COMPOSITION) {
+            requireCompositionEligible(stateCode, effectiveFrom, rules);
         }
         Optional<GstRegistration> latest = history().stream().reduce((a, b) -> b);
         if (latest.isPresent() && !effectiveFrom.isAfter(latest.get().effectiveFrom())) {
@@ -86,6 +98,37 @@ public final class GstRegistrations {
             throw new RulePackException("Could not record the GST registration: " + e.getMessage(), e);
         }
         return registration;
+    }
+
+    private void requireCompositionEligible(String stateCode, LocalDate effectiveFrom, RulePack rules) {
+        // GST's financial year runs April to March, whatever the books' year.
+        LocalDate yearStart = LocalDate.of(effectiveFrom.getMonthValue() >= 4
+                ? effectiveFrom.getYear() : effectiveFrom.getYear() - 1, 4, 1);
+        LocalDate from = yearStart.minusYears(1);
+        LocalDate to = yearStart.minusDays(1);
+        BigDecimal turnover;
+        try {
+            turnover = transactions.read(connection -> {
+                try (PreparedStatement ps = connection.prepareStatement("SELECT COALESCE(SUM(CASE kind "
+                        + "WHEN 'SALES_INVOICE' THEN taxable_e4 ELSE -taxable_e4 END), 0) FROM sales_document "
+                        + "WHERE status = 'POSTED' AND document_date BETWEEN ? AND ?")) {
+                    ps.setString(1, from.toString());
+                    ps.setString(2, to.toString());
+                    try (ResultSet rows = ps.executeQuery()) {
+                        rows.next();
+                        return MoneyMapper.fromStored(rows.getLong(1), Scale.MONEY);
+                    }
+                }
+            });
+        } catch (SQLException e) {
+            throw new RulePackException("Could not read last year's turnover: " + e.getMessage(), e);
+        }
+        BigDecimal limit = rules.compositionLimit(stateCode, effectiveFrom);
+        if (turnover.compareTo(limit) > 0) {
+            throw new RulePackException("Composition is not available: turnover from " + from + " to " + to + " was "
+                    + turnover.stripTrailingZeros().toPlainString() + ", above the limit of "
+                    + limit.stripTrailingZeros().toPlainString() + " for state " + stateCode);
+        }
     }
 
     /** The registration in force on {@code date}, if the company had one then. */
