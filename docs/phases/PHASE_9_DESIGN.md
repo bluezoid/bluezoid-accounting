@@ -120,3 +120,45 @@ P9a builds and tests; the numbers are data and will change.
 Inclusive (MRP) prices (P9-6), specific-rate cess (per unit), blocked input
 credit under s.17(5), tax on quotations and orders, exports/SEZ (P9-3).
 
+---
+
+## 7. P9c detailed design — TDS and TCS
+
+**Status:** DESIGN — awaiting P9-10…P9-13.
+
+### 7.1 What the law fixes (not choices)
+- TDS is deducted when the amount is **credited** to the payee or paid,
+  whichever is earlier. A purchase bill is the credit, so TDS is deducted on
+  the bill.
+- The base is the amount **excluding GST** when GST is shown separately
+  (CBDT Circular 23/2017).
+- The deductee's PAN decides the rate: 194C is 1% for an individual or HUF
+  (4th PAN character `P` or `H`), 2% otherwise. **No PAN** → the higher
+  no-PAN rate (s.206AA), from the rule pack.
+- Thresholds and rates are dated rule-pack data (P9a): single/annual,
+  excess-only (194Q), **monthly** (194I from 1 Apr 2025).
+- A debit note reduces the base; cancellation reverses the deduction.
+
+### 7.2 Model
+- `tds_deduction` (kernel; one row per document that bears TDS/TCS): side,
+  document, party, section (resolved, e.g. `194C-IND`), PAN as it stood,
+  base, rate, amount, rule-pack version; reversed with its document.
+- **Purchase bill with TDS:** Cr vendor `total − TDS`, Cr TDS Payable `TDS`.
+  The bill's outstanding is net of TDS; payments settle that.
+- **Sales receipt with TDS deducted by the customer:** Dr Bank `net`,
+  Dr TDS Receivable `TDS`, Cr customer `gross`; the receipt allocates the
+  gross to invoices. Recorded with the customer's section for 26AS
+  reconciliation.
+- **Threshold memory:** the year's aggregate per party per section comes from
+  `tds_deduction` rows and the taxable value of documents tagged with that
+  section, so no total is cached.
+
+### 7.3 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P9-10** | Scope of P9c | **(a)** TDS we deduct on purchase bills and debit notes; **(b)** TDS customers deduct from our receipts (TDS receivable); **(c)** TCS on sales invoices from rule-pack sections, which today has **no section in force** (206C(1H) withdrawn 1 Apr 2025), so built and tested on a dated test pack only. **Later:** TDS on advance payments before the bill, lower-deduction certificates (s.197), challans and Form 26Q/27Q/16A (P9d). |
+| **P9-11** | Rounding of the TDS amount | **Half-up to the paisa**, as GST (B-4). Rounding to the rupee is common practice but no rule requires it of a deduction (s.288B rounds tax *payable*), and TRACES accepts paise. The reference does not round at all. |
+| **P9-12** | When a vendor's yearly total crosses the annual threshold (194C: ₹1 lakh) | **Deduct on the year's whole aggregate:** the crossing bill also bears TDS on that vendor's earlier bills in the year under the section, which were below the threshold. The section taxes the aggregate once it exceeds the limit. The reference deducts on the crossing bill alone (**R-18**), leaving the earlier credits untaxed. |
+| **P9-13** | TDS ledgers | **One TDS Payable and one TDS Receivable** under Duties & Taxes, each deduction tagged with its section, so section-wise payables come from the records. Per-section ledgers (TDS 194C Payable, …) multiply with every new section a Finance Act adds. |
+
