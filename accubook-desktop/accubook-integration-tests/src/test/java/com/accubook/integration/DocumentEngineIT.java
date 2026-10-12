@@ -160,6 +160,15 @@ class DocumentEngineIT {
     class SalesInvoice {
 
         @Test
+        @DisplayName("a party with no credit days gets no due date, not one on the document date")
+        void noCreditDaysNoDueDate() {
+            Document bill = purchases.createDraft(DraftRequest.of(DocumentKind.PURCHASE_BILL, vendor.id(), DAY,
+                    List.of(LineRequest.goods(rice.id(), main.id(), d("1"), d("10")))));
+
+            assertThat(bill.dueDate()).isNull();
+        }
+
+        @Test
         @DisplayName("posts revenue, receivable and round off; issues stock; numbers INV/26-27/00001")
         void postsEverything() throws SQLException {
             Document draft = invoice("12.5", "79.90");          // 998.75 -> 999.00

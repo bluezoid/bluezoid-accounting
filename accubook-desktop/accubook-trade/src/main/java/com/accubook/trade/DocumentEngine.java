@@ -1138,9 +1138,11 @@ public final class DocumentEngine {
                 if (!rows.next()) {
                     throw new TradeException("No such party: " + partyId);
                 }
+                // wasNull() describes the column read last, so it is asked straight after credit_days.
                 int days = rows.getInt(4);
-                return new PartyRow(rows.getString(1), rows.getString(2), rows.getInt(3) == 1,
-                        rows.wasNull() ? null : days, blankToNull(rows.getString(5)), blankToNull(rows.getString(6)));
+                Integer creditDays = rows.wasNull() ? null : days;
+                return new PartyRow(rows.getString(1), rows.getString(2), rows.getInt(3) == 1, creditDays,
+                        blankToNull(rows.getString(5)), blankToNull(rows.getString(6)));
             }
         }
     }
