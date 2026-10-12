@@ -33,6 +33,8 @@ import java.util.Optional;
  * 194C|2025-04-01||1|20|SINGLE_OR_ANNUAL|30000|100000|Contractors
  * [tcs]
  * ...
+ * [composition-special-states]
+ * 12|2019-04-01|
  * </pre>
  * Fields are separated by {@code |}; an empty "to" date means still in force.
  * Parsing is strict: anything unexpected is refused with its line number, because
@@ -40,7 +42,14 @@ import java.util.Optional;
  */
 public record RulePack(String version, LocalDate issued, String status, List<String> sources,
                        List<StateCode> states, List<GstSlabs> gstSlabs, List<Threshold> thresholds,
-                       List<WithholdingSection> withholding) {
+                       List<WithholdingSection> withholding, List<DatedState> compositionSpecialStates) {
+
+    /** A state code in a dated list, e.g. the states with the lower composition limit. */
+    public record DatedState(String code, LocalDate from, LocalDate to) {
+        public boolean appliesOn(LocalDate date) {
+            return !date.isBefore(from) && (to == null || !date.isAfter(to));
+        }
+    }
 
     public static final String FORMAT = "accubook-rulepack/1";
 
@@ -50,6 +59,7 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
         gstSlabs = List.copyOf(gstSlabs);
         thresholds = List.copyOf(thresholds);
         withholding = List.copyOf(withholding);
+        compositionSpecialStates = List.copyOf(compositionSpecialStates);
     }
 
     // ================================================================ queries
@@ -77,6 +87,16 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
                 .findFirst();
     }
 
+    /**
+     * The composition turnover limit for a business registered in
+     * {@code stateCode} on {@code date}: lower in the special-category states.
+     */
+    public BigDecimal compositionLimit(String stateCode, LocalDate date) {
+        boolean special = compositionSpecialStates.stream()
+                .anyMatch(s -> s.code().equals(stateCode) && s.appliesOn(date));
+        return threshold(special ? "COMPOSITION_LIMIT_SPECIAL_STATES" : "COMPOSITION_LIMIT", date);
+    }
+
     /** Version order: numeric parts compared numerically, so 2025.10 follows 2025.9. */
     public static int compareVersions(String a, String b) {
         String[] x = a.split("\\.");
@@ -100,6 +120,7 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
         List<GstSlabs> slabs = new ArrayList<>();
         List<Threshold> thresholds = new ArrayList<>();
         List<WithholdingSection> withholding = new ArrayList<>();
+        List<DatedState> special = new ArrayList<>();
         String section = null;
 
         String[] lines = text.split("\n", -1);
@@ -112,7 +133,8 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
             try {
                 if (line.startsWith("[") && line.endsWith("]")) {
                     section = line.substring(1, line.length() - 1);
-                    if (!List.of("states", "gst-slabs", "thresholds", "tds", "tcs").contains(section)) {
+                    if (!List.of("states", "gst-slabs", "thresholds", "tds", "tcs",
+                            "composition-special-states").contains(section)) {
                         throw new RulePackException("unknown section [" + section + "]");
                     }
                     continue;
@@ -150,6 +172,10 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
                         thresholds.add(new Threshold(required(f[0], "key"), date(f[1]), optionalDate(f[2]),
                                 new BigDecimal(f[3])));
                     }
+                    case "composition-special-states" -> {
+                        expect(f, 3);
+                        special.add(new DatedState(required(f[0], "state"), date(f[1]), optionalDate(f[2])));
+                    }
                     default -> {
                         expect(f, 9);
                         withholding.add(new WithholdingSection(
@@ -172,7 +198,7 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
             throw new RulePackException("A rule pack needs a numeric version, e.g. 2025.10.1");
         }
         RulePack pack = new RulePack(version, date(required(header.get("issued"), "issued")),
-                required(header.get("status"), "status"), sources, states, slabs, thresholds, withholding);
+                required(header.get("status"), "status"), sources, states, slabs, thresholds, withholding, special);
         pack.requireNoOverlaps();
         return pack;
     }
@@ -188,6 +214,13 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
                 .map(w -> new Object[]{w.kind() + " " + w.section(), w.from(), w.to()}).toList());
         if (states.stream().map(StateCode::code).distinct().count() != states.size()) {
             throw new RulePackException("A state code appears twice");
+        }
+        checkOverlaps("composition special state", compositionSpecialStates.stream()
+                .map(s -> new Object[]{s.code(), s.from(), s.to()}).toList());
+        for (DatedState s : compositionSpecialStates) {
+            if (state(s.code()).isEmpty()) {
+                throw new RulePackException("Composition special state " + s.code() + " is not in [states]");
+            }
         }
     }
 

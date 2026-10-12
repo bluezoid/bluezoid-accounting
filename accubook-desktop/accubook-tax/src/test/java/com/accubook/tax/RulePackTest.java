@@ -29,12 +29,16 @@ class RulePackTest {
             2025-09-22||0,0.25,3,5,18,40
             [thresholds]
             B2CL_INVOICE|2017-07-01||250000
+            COMPOSITION_LIMIT|2019-04-01||15000000
+            COMPOSITION_LIMIT_SPECIAL_STATES|2019-04-01||7500000
             [tds]
             194J|2020-04-01|2025-03-31|10|20|SINGLE_OR_ANNUAL|30000||Professional fees
             194J|2025-04-01||10|20|SINGLE_OR_ANNUAL|50000||Professional fees
             194Q|2021-07-01||0.1|5|ANNUAL_EXCESS||5000000|Purchase of goods
             [tcs]
             206C(1H)|2020-10-01|2025-03-31|0.1|1|ANNUAL_EXCESS||5000000|Sale of goods
+            [composition-special-states]
+            38|2019-04-01|
             """;
 
     @Test
@@ -92,5 +96,22 @@ class RulePackTest {
     void versions() {
         assertThat(RulePack.compareVersions("2025.10", "2025.9")).isPositive();
         assertThat(RulePack.compareVersions("2025.10.0", "2025.10")).isZero();
+    }
+
+    @Test
+    @DisplayName("the composition limit is lower in a listed special-category state")
+    void compositionLimit() {
+        RulePack pack = RulePack.parse(SAMPLE);
+        LocalDate on = LocalDate.of(2026, 4, 1);
+
+        assertThat(pack.compositionLimit("27", on)).isEqualByComparingTo("15000000");
+        assertThat(pack.compositionLimit("38", on)).isEqualByComparingTo("7500000");
+    }
+
+    @Test
+    @DisplayName("a special state must be a known state")
+    void specialStateKnown() {
+        assertThatThrownBy(() -> RulePack.parse(SAMPLE.replace("38|2019-04-01|\n", "55|2019-04-01|\n")))
+                .hasMessageContaining("not in [states]");
     }
 }
