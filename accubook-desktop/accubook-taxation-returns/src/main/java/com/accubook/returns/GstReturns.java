@@ -57,12 +57,51 @@ public final class GstReturns {
         return Gstr1Json.write(gstr1(period));
     }
 
+    /** GSTR-3B as the books stand, with a suggested set-off. */
+    public Gstr3b gstr3b(ReturnPeriod period) {
+        requireReadable();
+        try {
+            return transactions.read(connection -> Gstr3bBuilder.build(connection, period, rules.get()));
+        } catch (SQLException e) {
+            throw new ReturnException("Could not build GSTR-3B: " + e.getMessage(), e);
+        }
+    }
+
+    /** GSTR-3B in the portal's JSON field names (P9-15). */
+    public String gstr3bJson(ReturnPeriod period) {
+        return Gstr3bJson.write(gstr3b(period));
+    }
+
     /**
      * Record that GSTR-1 for {@code period} was filed on the portal, with the
      * JSON as it is now. Refused while a blocking issue remains (P9-16) or the
-     * period is already filed.
+     * period is already filed. Locks the period's sales (P9-14).
      */
     public FiledReturn markGstr1Filed(ReturnPeriod period, LocalDate filedOn, String acknowledgement) {
+        return markFiled("GSTR1", "GSTR-1", period, filedOn, acknowledgement, (connection, pack) -> {
+            Gstr1 r = Gstr1Builder.build(connection, period, pack);
+            return new Built(r.gstin(), r.issues(), Gstr1Json.write(r));
+        });
+    }
+
+    /** As {@link #markGstr1Filed}, for GSTR-3B. Locks the period's sales and purchases (P9-14). */
+    public FiledReturn markGstr3bFiled(ReturnPeriod period, LocalDate filedOn, String acknowledgement) {
+        return markFiled("GSTR3B", "GSTR-3B", period, filedOn, acknowledgement, (connection, pack) -> {
+            Gstr3b r = Gstr3bBuilder.build(connection, period, pack);
+            return new Built(r.gstin(), r.issues(), Gstr3bJson.write(r));
+        });
+    }
+
+    private record Built(String gstin, List<Gstr1.Issue> issues, String json) {
+    }
+
+    @FunctionalInterface
+    private interface Builder {
+        Built build(java.sql.Connection connection, RulePack pack) throws SQLException;
+    }
+
+    private FiledReturn markFiled(String type, String name, ReturnPeriod period, LocalDate filedOn,
+                                  String acknowledgement, Builder builder) {
         entitlement.requireWritable(TaxationReturnsModule.ID, "file a GST return");
         Objects.requireNonNull(filedOn, "filedOn");
         if (filedOn.isBefore(period.to())) {
@@ -72,34 +111,36 @@ public final class GstReturns {
         try {
             transactions.inTransaction(connection -> {
                 RulePack pack = rules.get();
-                Gstr1 gstr1 = Gstr1Builder.build(connection, period, pack);
-                if (!gstr1.fileable()) {
-                    throw new ReturnException("GSTR-1 has issues to resolve before it is filed: "
-                            + gstr1.issues().stream().filter(Gstr1.Issue::blocking)
+                Built built = builder.build(connection, pack);
+                if (built.issues().stream().anyMatch(Gstr1.Issue::blocking)) {
+                    throw new ReturnException(name + " has issues to resolve before it is filed: "
+                            + built.issues().stream().filter(Gstr1.Issue::blocking)
                             .map(i -> i.document() + " - " + i.message()).toList());
                 }
-                String json = Gstr1Json.write(gstr1);
+                String json = built.json();
                 try (PreparedStatement ps = connection.prepareStatement("INSERT INTO gst_return (id, return_type, "
                         + "period_from, period_to, gstin, filed_on, acknowledgement, snapshot, snapshot_sha256, "
-                        + "rule_pack_version, created_at) VALUES (?, 'GSTR1', ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-                    ps.setString(1, id);
-                    ps.setString(2, period.from().toString());
-                    ps.setString(3, period.to().toString());
-                    ps.setString(4, gstr1.gstin());
-                    ps.setString(5, filedOn.toString());
-                    ps.setString(6, acknowledgement == null || acknowledgement.isBlank() ? null
+                        + "rule_pack_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    int i = 1;
+                    ps.setString(i++, id);
+                    ps.setString(i++, type);
+                    ps.setString(i++, period.from().toString());
+                    ps.setString(i++, period.to().toString());
+                    ps.setString(i++, built.gstin());
+                    ps.setString(i++, filedOn.toString());
+                    ps.setString(i++, acknowledgement == null || acknowledgement.isBlank() ? null
                             : acknowledgement.strip());
-                    ps.setString(7, json);
-                    ps.setString(8, sha256(json));
-                    ps.setString(9, pack.version());
-                    ps.setLong(10, clock.millis());
+                    ps.setString(i++, json);
+                    ps.setString(i++, sha256(json));
+                    ps.setString(i++, pack.version());
+                    ps.setLong(i, clock.millis());
                     ps.executeUpdate();
                 }
                 return null;
             });
         } catch (SQLException e) {
             throw new ReturnException(e.getMessage() != null && e.getMessage().contains("UNIQUE")
-                    ? "GSTR-1 for " + period.from() + " to " + period.to() + " is already filed"
+                    ? name + " for " + period.from() + " to " + period.to() + " is already filed"
                     : "Could not record the return: " + e.getMessage(), e);
         }
         return filed().stream().filter(f -> f.id().equals(id)).findFirst().orElseThrow();

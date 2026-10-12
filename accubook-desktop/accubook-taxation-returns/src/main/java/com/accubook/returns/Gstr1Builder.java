@@ -133,7 +133,7 @@ final class Gstr1Builder {
     }
 
     /** GSTR-1 is a regular taxpayer's return: the whole period must be under one regular registration. */
-    private static String requireRegularThroughout(Connection connection, ReturnPeriod period) throws SQLException {
+    static String requireRegularThroughout(Connection connection, ReturnPeriod period) throws SQLException {
         List<GstRegistration> spanning = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement("SELECT scheme, gstin, effective_from FROM "
                 + "gst_registration WHERE effective_from <= ? AND (effective_from > ? OR effective_from = "
@@ -155,7 +155,7 @@ final class Gstr1Builder {
         String gstin = spanning.get(0).gstin();
         for (GstRegistration r : spanning) {
             if (r.scheme() != GstRegistration.Scheme.REGULAR) {
-                throw new ReturnException("GSTR-1 is filed by a regular taxpayer; the company is "
+                throw new ReturnException("GSTR-1 and GSTR-3B are filed by a regular taxpayer; the company is "
                         + r.scheme().name().toLowerCase(java.util.Locale.ROOT) + " from " + r.effectiveFrom());
             }
             if (!r.gstin().equals(gstin)) {
