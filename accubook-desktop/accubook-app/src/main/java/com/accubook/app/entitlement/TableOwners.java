@@ -41,6 +41,7 @@ public final class TableOwners {
             Map.entry("unit", ModuleId.of("inventory")),
             Map.entry("item_category", ModuleId.of("inventory")),
             Map.entry("item", ModuleId.of("inventory")),
+            Map.entry("item_tax", ModuleId.of("inventory")),
             Map.entry("warehouse", ModuleId.of("inventory")),
             Map.entry("stock", ModuleId.of("inventory")),
             Map.entry("stock_movement", ModuleId.of("inventory")),

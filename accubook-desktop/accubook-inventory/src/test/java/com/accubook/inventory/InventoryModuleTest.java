@@ -36,7 +36,7 @@ class InventoryModuleTest {
     void ownership() {
         InventoryModule module = new InventoryModule();
         assertThat(module.ownedTables()).containsExactlyInAnyOrder(
-                "unit", "item_category", "item", "warehouse", "stock", "stock_movement",
+                "unit", "item_category", "item", "item_tax", "warehouse", "stock", "stock_movement",
                 "valuation_entry", "fifo_layer", "fifo_consumption", "valuation_run");
         assertThat(module.historicalViews())
                 .allSatisfy(view -> assertThat(module.ownedTables()).contains(view.table()));

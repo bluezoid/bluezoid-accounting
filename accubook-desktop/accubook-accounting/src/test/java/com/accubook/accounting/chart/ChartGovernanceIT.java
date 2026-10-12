@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ChartGovernanceIT {
 
-    /** 4 kernel ledgers (P2-1) plus Sales and Purchases (P7c). */
-    private static final long SEEDED_LEDGERS = 6;
+    /** 4 kernel ledgers (P2-1), Sales and Purchases (P7c), 15 GST ledgers (P9-7). */
+    private static final long SEEDED_LEDGERS = 21;
 
 
     @TempDir
@@ -54,8 +54,8 @@ class ChartGovernanceIT {
         @Test
         @DisplayName("seeds 18 groups, 6 ledgers and 8 voucher types")
         void seedsExpectedCounts() throws SQLException {
-            // 4 kernel ledgers (P2-1) plus Sales and Purchases (P7c), whose
-            // modules are in every plan.
+            // 4 kernel ledgers (P2-1), Sales and Purchases (P7c), whose modules
+            // are in every plan, and the GST ledgers (P9-7; GST is kernel, B-7).
             assertAll(
                     () -> assertEquals(18, fixture.count("ledger_group")),
                     () -> assertEquals(SEEDED_LEDGERS, fixture.count("ledger")),
@@ -65,12 +65,16 @@ class ChartGovernanceIT {
         @Test
         @DisplayName("P2-1 holds: no ledger is seeded for a module that is not in every plan")
         void doesNotSeedModuleLedgers() throws SQLException {
-            // Seeding a GST account in a build without its module would put a
-            // line on the trial balance nothing can ever post to. COGS would
-            // contradict B-1 (periodic 5a: no cost of goods sold at issue).
-            // Sales and Purchases ARE seeded: their modules are in every plan.
+            // Seeding an account for a module a build lacks would put a line on
+            // the trial balance nothing can ever post to. COGS would contradict
+            // B-1 (periodic 5a: no cost of goods sold at issue). Sales,
+            // Purchases and the per-component GST ledgers ARE seeded: their
+            // modules are in every plan. The reference's single GST Input and
+            // GST Output ledgers are not (P9-7).
             assertTrue(chart.findBySystemCode("SALES").isPresent());
             assertTrue(chart.findBySystemCode("PURCHASES").isPresent());
+            assertTrue(chart.findBySystemCode("GST_OUTPUT_CGST").isPresent());
+            assertTrue(chart.findBySystemCode("GST_RCM_CESS").isPresent());
             for (String code : new String[]{"GST_INPUT", "GST_OUTPUT", "COGS",
                     "INVENTORY_ADJUSTMENT"}) {
                 assertTrue(chart.findBySystemCode(code).isEmpty(),

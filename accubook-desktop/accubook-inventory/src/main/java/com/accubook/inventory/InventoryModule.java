@@ -21,7 +21,7 @@ public final class InventoryModule implements FeatureModule {
 
     /** Every table this module owns. The persistence guard reads this. */
     static final Set<String> TABLES = Set.of(
-            "unit", "item_category", "item", "warehouse", "stock", "stock_movement",
+            "unit", "item_category", "item", "item_tax", "warehouse", "stock", "stock_movement",
             "valuation_entry", "fifo_layer", "fifo_consumption", "valuation_run");
 
     @Override

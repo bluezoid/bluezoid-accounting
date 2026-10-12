@@ -85,8 +85,8 @@ public final class DocumentEngine {
             try (PreparedStatement ps = connection.prepareStatement("INSERT INTO " + documents
                     + " (id, kind, party_id, document_date, due_date, original_document_id, "
                     + (side == DocumentKind.Side.PURCHASE ? "supplier_document_no, " : "quotation_id, ")
-                    + "round_off_enabled, amount_e4, round_off_e4, total_e4, narration, created_at, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    + "round_off_enabled, amount_e4, round_off_e4, total_e4, narration, created_at, updated_at, "
+                    + "taxable_e4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 int i = 1;
                 ps.setString(i++, id);
                 ps.setString(i++, request.kind().name());
@@ -100,6 +100,7 @@ public final class DocumentEngine {
                 ps.setString(i + 4, blankToNull(request.narration()));
                 ps.setLong(i + 5, now());
                 ps.setLong(i + 6, now());
+                ps.setLong(i + 7, MoneyMapper.toStored(draft.money.amount(), Scale.MONEY));
                 ps.executeUpdate();
             }
             insertLines(connection, id, draft.lines);
@@ -167,8 +168,8 @@ public final class DocumentEngine {
             try (PreparedStatement ps = connection.prepareStatement("UPDATE " + documents
                     + " SET party_id = ?, document_date = ?, due_date = ?, original_document_id = ?, "
                     + (side == DocumentKind.Side.PURCHASE ? "supplier_document_no = ?, " : "quotation_id = ?, ")
-                    + "round_off_enabled = ?, amount_e4 = ?, round_off_e4 = ?, total_e4 = ?, narration = ?, "
-                    + "updated_at = ? WHERE id = ?")) {
+                    + "round_off_enabled = ?, amount_e4 = ?, round_off_e4 = ?, total_e4 = ?, "
+                    + "narration = ?, updated_at = ?, taxable_e4 = ? WHERE id = ?")) {
                 int i = 1;
                 ps.setString(i++, request.partyId());
                 ps.setString(i++, request.date().toString());
@@ -179,7 +180,8 @@ public final class DocumentEngine {
                 bindTotals(ps, i, request.roundOff(), draft.money);
                 ps.setString(i + 4, blankToNull(request.narration()));
                 ps.setLong(i + 5, now());
-                ps.setString(i + 6, documentId);
+                ps.setLong(i + 6, MoneyMapper.toStored(draft.money.amount(), Scale.MONEY));
+                ps.setString(i + 7, documentId);
                 ps.executeUpdate();
             }
             insertLines(connection, documentId, draft.lines);

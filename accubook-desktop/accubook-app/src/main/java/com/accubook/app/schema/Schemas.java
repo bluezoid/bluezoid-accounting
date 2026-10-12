@@ -86,7 +86,7 @@ public final class Schemas {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
                 COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
                 COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION,
-                COMPANY_V10_GST_REGISTRATION);
+                COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS);
     }
 
     /**
@@ -1374,4 +1374,173 @@ public final class Schemas {
                 SELECT RAISE(ABORT, 'A GST registration is never deleted');
             END;
             """);
+
+    /**
+     * Phase 9b: GST on documents.
+     *
+     * <ul>
+     *   <li>{@code item_tax} (inventory): an item's GST category and rates from a
+     *       date (P9-2). A document line copies them, so changing an item's rate
+     *       never re-taxes a document.</li>
+     *   <li>Each document records the basis it was taxed on - place of supply,
+     *       supply type, the company's scheme, the party's GSTIN and the rule
+     *       pack - and is never re-derived (P9-5).</li>
+     *   <li>{@code amount_e4} stays what the party is charged before round-off:
+     *       the taxable value plus tax, less tax under reverse charge, which the
+     *       company pays itself. Existing documents carried no tax, so their
+     *       taxable value is their amount.</li>
+     *   <li>The empty P7-1 tax-line tables are rebuilt with their constraints.</li>
+     *   <li>GST ledgers per component and direction (P9-7).</li>
+     * </ul>
+     */
+    private static final Migration COMPANY_V11_GST_ON_DOCUMENTS = new Migration(11, "GST on documents", """
+            CREATE TABLE item_tax (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                item_id         TEXT    NOT NULL REFERENCES item (id),
+                effective_from  TEXT    NOT NULL,
+                category        TEXT    NOT NULL
+                    CHECK (category IN ('TAXABLE', 'NIL_RATED', 'EXEMPT', 'NON_GST')),
+                -- Percent, scale 4: 18% is 180000, 0.25% is 2500.
+                gst_rate_e4     INTEGER NOT NULL CHECK (gst_rate_e4 >= 0),
+                cess_rate_e4    INTEGER NOT NULL DEFAULT 0 CHECK (cess_rate_e4 >= 0),
+                rule_pack_version TEXT  NOT NULL,
+                created_at      INTEGER NOT NULL,
+                updated_at      INTEGER NOT NULL,
+                CHECK ((category = 'TAXABLE' AND gst_rate_e4 > 0)
+                       OR (category <> 'TAXABLE' AND gst_rate_e4 = 0 AND cess_rate_e4 = 0)),
+                UNIQUE (item_id, effective_from)
+            ) STRICT;
+
+            """ + gstOnDocuments("sales") + gstOnDocuments("purchase")
+            + gstLedgers());
+
+    private static String gstOnDocuments(String side) {
+        return """
+            ALTER TABLE %1$s_document ADD COLUMN place_of_supply TEXT;
+            ALTER TABLE %1$s_document ADD COLUMN supplier_state TEXT;
+            ALTER TABLE %1$s_document ADD COLUMN supply_type TEXT
+                CHECK (supply_type IS NULL OR supply_type IN ('INTRA_STATE', 'INTER_STATE'));
+            ALTER TABLE %1$s_document ADD COLUMN gst_scheme TEXT
+                CHECK (gst_scheme IS NULL OR gst_scheme IN ('REGULAR', 'COMPOSITION', 'UNREGISTERED'));
+            ALTER TABLE %1$s_document ADD COLUMN party_gstin TEXT;
+            ALTER TABLE %1$s_document ADD COLUMN reverse_charge INTEGER NOT NULL DEFAULT 0
+                CHECK (reverse_charge IN (0, 1));
+            ALTER TABLE %1$s_document ADD COLUMN rule_pack_version TEXT;
+            ALTER TABLE %1$s_document ADD COLUMN taxable_e4 INTEGER NOT NULL DEFAULT 0 CHECK (taxable_e4 >= 0);
+            ALTER TABLE %1$s_document ADD COLUMN tax_e4 INTEGER NOT NULL DEFAULT 0 CHECK (tax_e4 >= 0);
+
+            -- The immutability trigger is replaced, so the backfill can reach
+            -- posted documents, and so the new columns are frozen with the rest.
+            DROP TRIGGER %1$s_document_posted_immutable;
+            UPDATE %1$s_document SET taxable_e4 = amount_e4;
+
+            CREATE TRIGGER %1$s_document_posted_immutable
+            BEFORE UPDATE ON %1$s_document
+            WHEN OLD.status <> 'DRAFT'
+             AND NOT (OLD.status = 'POSTED' AND NEW.status = 'CANCELLED'
+                      AND NEW.number = OLD.number AND NEW.kind = OLD.kind
+                      AND NEW.party_id = OLD.party_id AND NEW.document_date = OLD.document_date
+                      AND NEW.total_e4 = OLD.total_e4 AND NEW.voucher_id = OLD.voucher_id
+                      AND NEW.amount_e4 = OLD.amount_e4 AND NEW.taxable_e4 = OLD.taxable_e4
+                      AND NEW.tax_e4 = OLD.tax_e4 AND NEW.reverse_charge = OLD.reverse_charge
+                      AND NEW.place_of_supply IS OLD.place_of_supply
+                      AND NEW.supplier_state IS OLD.supplier_state
+                      AND NEW.supply_type IS OLD.supply_type AND NEW.gst_scheme IS OLD.gst_scheme
+                      AND NEW.party_gstin IS OLD.party_gstin
+                      AND NEW.rule_pack_version IS OLD.rule_pack_version)
+            BEGIN
+                SELECT RAISE(ABORT, 'A posted document cannot be changed; cancel it instead');
+            END;
+
+            CREATE TRIGGER %1$s_document_amount_insert
+            BEFORE INSERT ON %1$s_document
+            WHEN NEW.amount_e4 <> NEW.taxable_e4 + CASE WHEN NEW.reverse_charge = 1 THEN 0 ELSE NEW.tax_e4 END
+            BEGIN
+                SELECT RAISE(ABORT, 'A document amount is its taxable value plus tax (less reverse-charge tax)');
+            END;
+
+            CREATE TRIGGER %1$s_document_amount_update
+            BEFORE UPDATE OF amount_e4, taxable_e4, tax_e4, reverse_charge ON %1$s_document
+            WHEN NEW.amount_e4 <> NEW.taxable_e4 + CASE WHEN NEW.reverse_charge = 1 THEN 0 ELSE NEW.tax_e4 END
+            BEGIN
+                SELECT RAISE(ABORT, 'A document amount is its taxable value plus tax (less reverse-charge tax)');
+            END;
+
+            -- Null on lines written before P9b, which carried no GST.
+            ALTER TABLE %1$s_document_line ADD COLUMN tax_category TEXT
+                CHECK (tax_category IS NULL OR tax_category IN ('TAXABLE', 'NIL_RATED', 'EXEMPT', 'NON_GST'));
+            ALTER TABLE %1$s_document_line ADD COLUMN gst_rate_e4 INTEGER NOT NULL DEFAULT 0 CHECK (gst_rate_e4 >= 0);
+            ALTER TABLE %1$s_document_line ADD COLUMN cess_rate_e4 INTEGER NOT NULL DEFAULT 0 CHECK (cess_rate_e4 >= 0);
+            -- Copied from the item, as printed on the document.
+            ALTER TABLE %1$s_document_line ADD COLUMN hsn_sac TEXT;
+
+            CREATE TABLE %1$s_tax_line_v11 (
+                id          TEXT    NOT NULL PRIMARY KEY,
+                line_id     TEXT    NOT NULL REFERENCES %1$s_document_line (id) ON DELETE CASCADE,
+                component   TEXT    NOT NULL CHECK (component IN ('CGST', 'SGST', 'UTGST', 'IGST', 'CESS')),
+                rate_e4     INTEGER NOT NULL CHECK (rate_e4 > 0),
+                -- B-4: each component rounded half-up to the paisa.
+                amount_e4   INTEGER NOT NULL CHECK (amount_e4 >= 0 AND amount_e4 %% 100 = 0),
+                UNIQUE (line_id, component)
+            ) STRICT;
+            -- Nothing wrote the P7-1 table; copying keeps this safe if something had.
+            INSERT INTO %1$s_tax_line_v11 (id, line_id, component, rate_e4, amount_e4)
+                SELECT id, line_id, component, rate_bp * 100, amount_e4 FROM %1$s_tax_line;
+            DROP TABLE %1$s_tax_line;
+            ALTER TABLE %1$s_tax_line_v11 RENAME TO %1$s_tax_line;
+            CREATE INDEX idx_%1$s_tax_line_line ON %1$s_tax_line (line_id);
+
+            CREATE TRIGGER %1$s_tax_line_insert_only_in_draft
+            BEFORE INSERT ON %1$s_tax_line
+            WHEN (SELECT d.status FROM %1$s_document d JOIN %1$s_document_line l ON l.document_id = d.id
+                  WHERE l.id = NEW.line_id) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'The tax of a posted document cannot be changed');
+            END;
+
+            CREATE TRIGGER %1$s_tax_line_update_only_in_draft
+            BEFORE UPDATE ON %1$s_tax_line
+            WHEN (SELECT d.status FROM %1$s_document d JOIN %1$s_document_line l ON l.document_id = d.id
+                  WHERE l.id = OLD.line_id) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'The tax of a posted document cannot be changed');
+            END;
+
+            CREATE TRIGGER %1$s_tax_line_delete_only_in_draft
+            BEFORE DELETE ON %1$s_tax_line
+            WHEN (SELECT d.status FROM %1$s_document d JOIN %1$s_document_line l ON l.document_id = d.id
+                  WHERE l.id = OLD.line_id) <> 'DRAFT'
+            BEGIN
+                SELECT RAISE(ABORT, 'The tax of a posted document cannot be changed');
+            END;
+
+            """.formatted(side);
+    }
+
+    /** P9-7: the GST ledgers, for companies that already exist; provisioning seeds new ones. */
+    private static String gstLedgers() {
+        StringBuilder sql = new StringBuilder();
+        for (String[] ledger : gstLedgerList()) {
+            sql.append(seedSystemLedger(ledger[0], ledger[1], "DUTIES_AND_TAXES"));
+        }
+        return sql.toString();
+    }
+
+    /**
+     * System code and name of every GST ledger (P9-7): output and input per
+     * component, and the reverse-charge liability, which is paid in cash and so
+     * kept apart from output tax.
+     */
+    public static final List<String[]> GST_LEDGERS = gstLedgerList();
+
+    private static List<String[]> gstLedgerList() {
+        List<String[]> result = new java.util.ArrayList<>();
+        for (String[] direction : new String[][]{{"OUTPUT", "Output"}, {"INPUT", "Input"}, {"RCM", "RCM Payable"}}) {
+            for (String component : new String[]{"CGST", "SGST", "UTGST", "IGST", "CESS"}) {
+                result.add(new String[]{"GST_" + direction[0] + "_" + component,
+                        direction[1] + " " + (component.equals("CESS") ? "Cess" : component)});
+            }
+        }
+        return List.copyOf(result);
+    }
 }

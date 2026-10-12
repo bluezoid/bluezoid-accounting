@@ -105,7 +105,8 @@ class DocumentSchemaIT {
                     .hasMessageContaining("CHECK");
             assertThatThrownBy(() -> exec(database, "UPDATE sales_document SET status = 'POSTED', "
                     + "number = 'INV/26-27/00001' WHERE id = 'd1'")).hasMessageContaining("CHECK");
-            assertThatThrownBy(() -> exec(database, "UPDATE sales_document SET amount_e4 = 1000000, total_e4 = 999900 "
+            assertThatThrownBy(() -> exec(database, "UPDATE sales_document SET amount_e4 = 1000000, taxable_e4 = 1000000, "
+                    + "total_e4 = 999900 "
                     + "WHERE id = 'd1'")).as("total = amount + round off").hasMessageContaining("CHECK");
         }
     }
@@ -143,7 +144,9 @@ class DocumentSchemaIT {
             exec(database, "INSERT INTO sales_document_line (id, document_id, sequence, description, quantity_e4, "
                     + "rate_e4, amount_e4) VALUES ('l1', 'd1', 1, 'Consulting', 10000, 1000000, 1000000)");
             exec(database, "UPDATE sales_document SET status = 'POSTED', number = 'INV/26-27/00001', "
-                    + "amount_e4 = 1000000, total_e4 = 1000000, voucher_id = 'v1', "
+                    + "amount_e4 = 1000000, taxable_e4 = 1000000, total_e4 = 1000000, voucher_id = 'v1', "
+                    + "gst_scheme = 'REGULAR', place_of_supply = '27', supply_type = 'INTRA_STATE', "
+                    + "rule_pack_version = '2025.10.1', "
                     + "fiscal_year_id = (SELECT id FROM fiscal_year) WHERE id = 'd1'");
 
             assertThatThrownBy(() -> exec(database, "UPDATE sales_document SET document_date = '2026-05-02'"))

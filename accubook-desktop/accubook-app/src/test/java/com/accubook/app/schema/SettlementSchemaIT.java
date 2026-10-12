@@ -52,9 +52,10 @@ class SettlementSchemaIT {
                 + "'1', '2026-05-01', 1000000, 1000000, 'POSTED', 1, 0, 0, 0");
         // A posted invoice of 1,000 for p1 and a receipt of 700 from p1.
         exec("INSERT INTO sales_document (id, kind, number, party_id, document_date, status, amount_e4, "
-                + "total_e4, fiscal_year_id, voucher_id, created_at, updated_at) VALUES ('inv', 'SALES_INVOICE', "
-                + "'INV/26-27/00001', 'p1', '2026-05-01', 'POSTED', 10000000, 10000000, "
-                + "(SELECT id FROM fiscal_year), 'v1', 0, 0)");
+                + "taxable_e4, total_e4, fiscal_year_id, voucher_id, gst_scheme, place_of_supply, supply_type, "
+                + "rule_pack_version, created_at, updated_at) VALUES ('inv', 'SALES_INVOICE', "
+                + "'INV/26-27/00001', 'p1', '2026-05-01', 'POSTED', 10000000, 10000000, 10000000, "
+                + "(SELECT id FROM fiscal_year), 'v1', 'REGULAR', '27', 'INTRA_STATE', '2025.10.1', 0, 0)");
         exec("INSERT INTO sales_settlement (id, number, party_id, settlement_date, amount_e4, account_ledger_id, "
                 + "mode, fiscal_year_id, voucher_id, created_at, updated_at) VALUES ('r1', 'RCT/26-27/00001', 'p1', "
                 + "'2026-05-02', 7000000, (SELECT id FROM ledger WHERE system_code = 'CASH_IN_HAND'), 'CASH', "
@@ -76,9 +77,11 @@ class SettlementSchemaIT {
     @DisplayName("D-21: a receipt cannot allocate more than it holds, even by direct SQL")
     void sourceLimit() throws SQLException {
         exec(allocate("a1", "r1", "inv", 7000000));
-        exec("INSERT INTO sales_document (id, kind, number, party_id, document_date, status, amount_e4, total_e4, "
-                + "fiscal_year_id, voucher_id, created_at, updated_at) VALUES ('inv2', 'SALES_INVOICE', "
-                + "'INV/26-27/00002', 'p1', '2026-05-01', 'POSTED', 100, 100, (SELECT id FROM fiscal_year), 'v1', 0, 0)");
+        exec("INSERT INTO sales_document (id, kind, number, party_id, document_date, status, amount_e4, taxable_e4, "
+                + "total_e4, fiscal_year_id, voucher_id, gst_scheme, place_of_supply, supply_type, rule_pack_version, "
+                + "created_at, updated_at) VALUES ('inv2', 'SALES_INVOICE', "
+                + "'INV/26-27/00002', 'p1', '2026-05-01', 'POSTED', 100, 100, 100, (SELECT id FROM fiscal_year), 'v1', "
+                + "'REGULAR', '27', 'INTRA_STATE', '2025.10.1', 0, 0)");
         assertThatThrownBy(() -> exec(allocate("a2", "r1", "inv2", 100))).hasMessageContaining("holds");
     }
 

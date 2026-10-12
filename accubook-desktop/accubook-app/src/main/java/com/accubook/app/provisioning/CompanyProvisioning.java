@@ -1,5 +1,6 @@
 package com.accubook.app.provisioning;
 
+import com.accubook.app.schema.Schemas;
 import com.accubook.persistence.connection.Database;
 import com.accubook.platform.id.Ids;
 
@@ -68,11 +69,10 @@ public final class CompanyProvisioning {
     /**
      * Ledgers the core needs.
      *
-     * <p>Only those the accounting core itself will use. Module ledgers - GST
-     * Input/Output, PF Payable, Purchase Accounts - arrive with their modules,
-     * per decision P2-1.
+     * <p>Only those the core and the kernel modules use. Feature-module ledgers
+     * such as PF Payable arrive with their modules, per decision P2-1.
      */
-    private static final List<LedgerSeed> LEDGERS = List.of(
+    private static final List<LedgerSeed> LEDGERS = java.util.stream.Stream.concat(java.util.stream.Stream.of(
             new LedgerSeed("CASH_IN_HAND", "Cash in Hand", CODE_CASH_AND_BANK),
             // Contra for balances that exist before the books begin. Without
             // somewhere to put the other half, an opening balance leaves the
@@ -84,8 +84,9 @@ public final class CompanyProvisioning {
             // so their ledgers are seeded for every company. Purchases sits in
             // Direct Expenses because inventory is periodic (B-1, 5a).
             new LedgerSeed("SALES", "Sales", "SALES_ACCOUNTS"),
-            new LedgerSeed("PURCHASES", "Purchases", "DIRECT_EXPENSES")
-    );
+            new LedgerSeed("PURCHASES", "Purchases", "DIRECT_EXPENSES")),
+            // P9-7: GST computation is kernel (B-7), so every plan has its ledgers.
+            Schemas.GST_LEDGERS.stream().map(l -> new LedgerSeed(l[0], l[1], CODE_DUTIES_AND_TAXES))).toList();
 
     /** The eight standard voucher types, per company rather than global. */
     private static final List<VoucherTypeSeed> VOUCHER_TYPES = List.of(
