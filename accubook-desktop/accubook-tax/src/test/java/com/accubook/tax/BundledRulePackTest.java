@@ -68,4 +68,12 @@ class BundledRulePackTest {
                 .isEqualByComparingTo("15000000");
         assertThat(pack.compositionSpecialStates()).hasSize(8);
     }
+
+    @Test
+    @DisplayName("the UQC list has the common codes, OTH included")
+    void uqcList() {
+        assertThat(BUNDLED.pack().uqcs()).hasSize(45);
+        assertThat(BUNDLED.pack().uqc("NOS")).isPresent();
+        assertThat(BUNDLED.pack().uqc("OTH")).isPresent();
+    }
 }

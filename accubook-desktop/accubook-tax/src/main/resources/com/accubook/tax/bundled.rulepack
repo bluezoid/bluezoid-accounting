@@ -1,9 +1,9 @@
 accubook-rulepack-signature/1
 key=acb-rulepack-dev-primary
-signature=0fw3a6YwU1e20aa4ajNRsNmGlEnrphOafFCpXp7hk2X2DvLfJ9WgPa6x+2ke3W/hxpD/gEs/CMoy59ZzNAreDQ==
+signature=rcfKEtS5La//LuQd3MUx5UemNcmEnDqoLotOMbhCPQ2xDuwaI4F79D/6afF0B4IPXXNuogKami0BCCufuDHjBw==
 ---
 format=accubook-rulepack/1
-version=2025.10.2
+version=2025.10.3
 issued=2026-10-12
 # UNVERIFIED: compiled from public secondary sources for development. A
 # chartered accountant must verify every rate, threshold and date before any
@@ -111,3 +111,53 @@ COMPOSITION_LIMIT_SPECIAL_STATES|2019-04-01||7500000
 11|2019-04-01|
 16|2019-04-01|
 05|2019-04-01|
+
+# GST unit quantity codes (UQC) accepted in the HSN summary of GSTR-1.
+# The list as commonly published from the GST portal's master; to be checked
+# against the portal's current master before release (V-1).
+[uqc]
+BAG|Bags
+BAL|Bale
+BDL|Bundles
+BKL|Buckles
+BOU|Billion of units
+BOX|Box
+BTL|Bottles
+BUN|Bunches
+CAN|Cans
+CBM|Cubic metres
+CCM|Cubic centimetres
+CMS|Centimetres
+CTN|Cartons
+DOZ|Dozens
+DRM|Drums
+GGK|Great gross
+GMS|Grammes
+GRS|Gross
+GYD|Gross yards
+KGS|Kilograms
+KLR|Kilolitre
+KME|Kilometre
+LTR|Litres
+MLT|Millilitre
+MTR|Metres
+MTS|Metric ton
+NOS|Numbers
+OTH|Others
+PAC|Packs
+PCS|Pieces
+PRS|Pairs
+QTL|Quintal
+ROL|Rolls
+SET|Sets
+SQF|Square feet
+SQM|Square metres
+SQY|Square yards
+TBS|Tablets
+TGM|Ten gross
+THD|Thousands
+TON|Tonnes
+TUB|Tubes
+UGS|US gallons
+UNT|Units
+YDS|Yards
