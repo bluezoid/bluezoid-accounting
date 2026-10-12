@@ -4,6 +4,8 @@ import com.accubook.accounting.posting.TransactionalPosting;
 import com.accubook.module.EntitlementGuard;
 import com.accubook.module.ModuleTransactions;
 import com.accubook.module.stock.StockPort;
+import com.accubook.tax.RulePack;
+import com.accubook.tax.RulePacks;
 import com.accubook.trade.Document;
 import com.accubook.trade.DocumentEngine;
 import com.accubook.trade.DocumentKind;
@@ -15,6 +17,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Sales invoicing use cases. Everything is the shared engine on the
@@ -30,11 +33,21 @@ public final class SalesInvoicing {
         this(transactions, entitlement, StockPort.installed(), Clock.systemUTC());
     }
 
+    /** Over the rule pack bundled with this build - for tests and tools. */
     public SalesInvoicing(ModuleTransactions transactions, EntitlementGuard entitlement, Optional<StockPort> stock,
-                         Clock clock) {
+                      Clock clock) {
+        this(transactions, entitlement, stock, RulePacks::bundledPack, clock);
+    }
+
+    /**
+     * @param rules the active rule pack - in the application,
+     *              {@code CompanyService::rules}, so an imported pack applies
+     */
+    public SalesInvoicing(ModuleTransactions transactions, EntitlementGuard entitlement, Optional<StockPort> stock,
+                      Supplier<RulePack> rules, Clock clock) {
         TransactionalPosting posting = new TransactionalPosting(entitlement, clock);
         this.engine = new DocumentEngine(DocumentKind.Side.SALES, SalesInvoicingModule.ID, transactions, entitlement,
-                posting, stock, clock);
+                posting, stock, rules, clock);
         this.settlements = new SettlementEngine(DocumentKind.Side.SALES, SalesInvoicingModule.ID, transactions, entitlement,
                 posting, clock);
     }

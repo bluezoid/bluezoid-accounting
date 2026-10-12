@@ -9,6 +9,8 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-accounting</artifactId></dependency>
+    <!-- Kernel GST rules: documents are taxed from P9b. -->
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-tax</artifactId></dependency>
     <!-- Test only: real companies through CompanyService. -->
     <dependency>
       <groupId>com.accubook</groupId><artifactId>accubook-app</artifactId>

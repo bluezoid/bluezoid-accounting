@@ -13,6 +13,7 @@ module accubook.trade {
     requires transitive accubook.platform;
     requires transitive accubook.module.api;
     requires transitive accubook.accounting;
+    requires transitive accubook.tax;
 
     uses com.accubook.module.stock.StockPort;
 

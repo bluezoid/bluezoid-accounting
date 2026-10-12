@@ -18,10 +18,13 @@ import com.accubook.module.ModuleNotWritableException;
 import com.accubook.module.ModuleRegistry;
 import com.accubook.module.ModuleState;
 import com.accubook.module.ModuleTransactions;
+import com.accubook.purchase.PurchaseBilling;
 import com.accubook.purchaseorders.PurchaseOrders;
 import com.accubook.sales.SalesInvoicing;
 import com.accubook.salesorders.SalesOrders;
-import com.accubook.purchase.PurchaseBilling;
+import com.accubook.tax.GstRegistration;
+import com.accubook.tax.GstRegistrations;
+import com.accubook.tax.RulePacks;
 import com.accubook.trade.Document;
 import com.accubook.trade.DocumentStatus;
 import com.accubook.trade.DraftRequest;
@@ -84,6 +87,9 @@ class OrdersIT {
                 id -> states.getOrDefault(id, ModuleState.ACTIVE));
         service.openCompany(service.createCompany("Asha Traders").id());
         transactions = service.openCompanyTransactions();
+        // P9-8: no document without a GST position. Unregistered: these tests predate GST on documents.
+        new GstRegistrations(transactions, Clock.systemUTC()).register(GstRegistration.Scheme.UNREGISTERED, null, "27",
+                LocalDate.of(2017, 7, 1), RulePacks.bundledPack());
         EntitlementGuard guard = new EntitlementGuard(service.moduleStates());
         Clock clock = Clock.fixed(Instant.parse("2026-05-01T10:00:00Z"), ZoneOffset.UTC);
         Optional<com.accubook.module.stock.StockPort> port = Optional.of(new InventoryStockPort());

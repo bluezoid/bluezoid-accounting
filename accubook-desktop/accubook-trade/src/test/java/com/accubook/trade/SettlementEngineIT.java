@@ -14,6 +14,9 @@ import com.accubook.module.ModuleNotWritableException;
 import com.accubook.module.ModuleRegistry;
 import com.accubook.module.ModuleState;
 import com.accubook.module.ModuleTransactions;
+import com.accubook.tax.GstRegistration;
+import com.accubook.tax.GstRegistrations;
+import com.accubook.tax.RulePacks;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,13 +71,17 @@ class SettlementEngineIT {
         String companyId = service.createCompany("Asha Traders").id();
         service.openCompany(companyId);
         transactions = service.openCompanyTransactions();
+        // P9-8: no document without a GST position. Unregistered: these tests predate GST on documents.
+        new GstRegistrations(transactions, Clock.systemUTC()).register(GstRegistration.Scheme.UNREGISTERED, null, "27",
+                LocalDate.of(2017, 7, 1), RulePacks.bundledPack());
         EntitlementGuard guard = new EntitlementGuard(service.moduleStates());
         Clock clock = Clock.fixed(Instant.parse("2026-05-01T10:00:00Z"), ZoneOffset.UTC);
         TransactionalPosting posting = new TransactionalPosting(guard, clock);
-        sales = new DocumentEngine(DocumentKind.Side.SALES, SALES, transactions, guard, posting, Optional.empty(), clock);
+        sales = new DocumentEngine(DocumentKind.Side.SALES, SALES, transactions, guard, posting, Optional.empty(),
+                RulePacks::bundledPack, clock);
         receipts = new SettlementEngine(DocumentKind.Side.SALES, SALES, transactions, guard, posting, clock);
         purchases = new DocumentEngine(DocumentKind.Side.PURCHASE, PURCHASE, transactions, guard, posting,
-                Optional.empty(), clock);
+                Optional.empty(), RulePacks::bundledPack, clock);
         payments = new SettlementEngine(DocumentKind.Side.PURCHASE, PURCHASE, transactions, guard, posting, clock);
 
         Parties parties = new Parties(transactions);

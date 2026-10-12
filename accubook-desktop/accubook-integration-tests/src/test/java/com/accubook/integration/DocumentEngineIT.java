@@ -32,6 +32,9 @@ import com.accubook.module.ModuleNotWritableException;
 import com.accubook.module.ModuleRegistry;
 import com.accubook.module.ModuleState;
 import com.accubook.module.ModuleTransactions;
+import com.accubook.tax.GstRegistration;
+import com.accubook.tax.GstRegistrations;
+import com.accubook.tax.RulePacks;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,12 +92,17 @@ class DocumentEngineIT {
         String companyId = service.createCompany("Asha Traders").id();
         service.openCompany(companyId);
         transactions = service.openCompanyTransactions();
+        // P9-8: no document without a GST position. Unregistered: these tests predate GST on documents.
+        new GstRegistrations(transactions, Clock.systemUTC()).register(GstRegistration.Scheme.UNREGISTERED, null, "27",
+                LocalDate.of(2017, 7, 1), RulePacks.bundledPack());
         EntitlementGuard guard = new EntitlementGuard(service.moduleStates());
         Clock clock = Clock.fixed(Instant.parse("2026-05-10T10:00:00Z"), ZoneOffset.UTC);
         sales = new DocumentEngine(DocumentKind.Side.SALES, SALES, transactions, guard,
-                new TransactionalPosting(guard, clock), Optional.of(new InventoryStockPort()), clock);
+                new TransactionalPosting(guard, clock), Optional.of(new InventoryStockPort()),
+                RulePacks::bundledPack, clock);
         purchases = new DocumentEngine(DocumentKind.Side.PURCHASE, PURCHASE, transactions, guard,
-                new TransactionalPosting(guard, clock), Optional.of(new InventoryStockPort()), clock);
+                new TransactionalPosting(guard, clock), Optional.of(new InventoryStockPort()),
+                RulePacks::bundledPack, clock);
         inventory = new Inventory(transactions, guard, clock);
 
         Parties parties = new Parties(transactions);
@@ -416,7 +424,7 @@ class DocumentEngineIT {
         void withoutInventory() throws SQLException {
             EntitlementGuard guard = new EntitlementGuard(service.moduleStates());
             DocumentEngine basic = new DocumentEngine(DocumentKind.Side.SALES, SALES, transactions, guard,
-                    new TransactionalPosting(guard), Optional.empty(), Clock.systemUTC());
+                    new TransactionalPosting(guard), Optional.empty(), RulePacks::bundledPack, Clock.systemUTC());
 
             assertThatThrownBy(() -> basic.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(),
                     DAY, List.of(LineRequest.goods(rice.id(), main.id(), d("1"), d("10"))))))

@@ -8,6 +8,9 @@ import com.accubook.module.EntitlementGuard;
 import com.accubook.module.ModuleRegistry;
 import com.accubook.module.ModuleState;
 import com.accubook.module.stock.StockPort;
+import com.accubook.tax.GstRegistration;
+import com.accubook.tax.GstRegistrations;
+import com.accubook.tax.RulePacks;
 import com.accubook.trade.Document;
 import com.accubook.trade.DocumentKind;
 import com.accubook.trade.DocumentStatus;
@@ -20,6 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -39,6 +43,9 @@ class SalesInvoicingIT {
                 ModuleRegistry.discover(List.of(new SalesInvoicingModule())), id -> ModuleState.ACTIVE)) {
             String companyId = service.createCompany("Asha Traders").id();
             service.openCompany(companyId);
+            // P9-8: no document without a GST position. Unregistered: these tests predate GST on documents.
+            new GstRegistrations(service.openCompanyTransactions(), Clock.systemUTC()).register(GstRegistration.Scheme.UNREGISTERED, null, "27",
+                    LocalDate.of(2017, 7, 1), RulePacks.bundledPack());
             Party party = new Parties(service.openCompanyTransactions()).create("Mehta & Co", PartyRole.CUSTOMER, null, 0);
             SalesInvoicing module = new SalesInvoicing(service.openCompanyTransactions(),
                     new EntitlementGuard(service.moduleStates()));
