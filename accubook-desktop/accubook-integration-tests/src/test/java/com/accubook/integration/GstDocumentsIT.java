@@ -435,4 +435,26 @@ class GstDocumentsIT {
                 JUNE_10, List.of(LineRequest.text("Goods", d("1"), d("1000")).withTax(TaxCategory.TAXABLE, d("18"), null))));
         assertThat(sales.post(resaved.id()).tax()).isEqualByComparingTo("180");
     }
+
+    @Test
+    @DisplayName("P9-16: a line keeps its unit's GST code and its HSN; a free-text line states its own; bad codes refused")
+    void hsnAndUqc() {
+        regular();
+        inventory.setUnitUqc(nos.id(), "nos", RULES);
+        assertThatThrownBy(() -> inventory.setUnitUqc(nos.id(), "PCE", RULES)).hasMessageContaining("not a GST unit code");
+        stock(party("Rao Wholesale", PartyRole.VENDOR, VENDOR_MH, null), "5", "60");
+        Party customer = party("Cash Customer", PartyRole.CUSTOMER, null, null);
+
+        Document draft = sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), MAY_10, List.of(
+                LineRequest.goods(lamp.id(), main.id(), d("1"), d("100")),
+                LineRequest.text("Installation", d("1"), d("500")).withTax(TaxCategory.TAXABLE, d("18"), null)
+                        .withHsn("998719"))));
+
+        assertThat(draft.lines()).extracting(l -> l.hsnSac() + "/" + l.uqc())
+                .containsExactly("9405/NOS", "998719/null");
+        assertThatThrownBy(() -> sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), MAY_10,
+                List.of(LineRequest.text("Installation", d("1"), d("500")).withTax(TaxCategory.TAXABLE, d("18"), null)
+                        .withHsn("99871")))))
+                .hasMessageContaining("not an HSN or SAC code");
+    }
 }

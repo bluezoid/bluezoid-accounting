@@ -17,10 +17,18 @@ import java.math.BigDecimal;
  *                    note, the original line's); required on a taxed free-text line
  * @param gstRate     percent; with {@code taxCategory}
  * @param cessRate    percent, or null for none; with {@code taxCategory}
+ * @param hsnSac      HSN or SAC code of a free-text line; an item line takes its item's
  */
 public record LineRequest(String itemId, String description, BigDecimal quantity, BigDecimal rate,
                           int discountBp, String warehouseId, String orderLineId, TaxCategory taxCategory,
-                          BigDecimal gstRate, BigDecimal cessRate) {
+                          BigDecimal gstRate, BigDecimal cessRate, String hsnSac) {
+
+    public LineRequest(String itemId, String description, BigDecimal quantity, BigDecimal rate,
+                       int discountBp, String warehouseId, String orderLineId, TaxCategory taxCategory,
+                       BigDecimal gstRate, BigDecimal cessRate) {
+        this(itemId, description, quantity, rate, discountBp, warehouseId, orderLineId, taxCategory, gstRate,
+                cessRate, null);
+    }
 
     /** A line whose GST comes from its item. */
     public LineRequest(String itemId, String description, BigDecimal quantity, BigDecimal rate,
@@ -47,6 +55,12 @@ public record LineRequest(String itemId, String description, BigDecimal quantity
     /** This line with its GST stated rather than defaulted. */
     public LineRequest withTax(TaxCategory category, BigDecimal gst, BigDecimal cess) {
         return new LineRequest(itemId, description, quantity, rate, discountBp, warehouseId, orderLineId, category,
-                gst, cess);
+                gst, cess, hsnSac);
+    }
+
+    /** This line with its HSN or SAC code stated (a free-text line has no item to take it from). */
+    public LineRequest withHsn(String code) {
+        return new LineRequest(itemId, description, quantity, rate, discountBp, warehouseId, orderLineId, taxCategory,
+                gstRate, cessRate, code);
     }
 }

@@ -257,6 +257,7 @@ public final class DocumentEngine {
                 throw new TradeException("A document must have a total above zero to post");
             }
             Lookups.FiscalYearRow year = Lookups.fiscalYearFor(connection, doc.date);
+            requireGstPeriodOpen(connection, doc, "post");
             GstBasis basis = requireBasisCurrent(connection, doc);
             requireWithinCompositionLimit(connection, doc, basis);
             if (doc.kind.isNote()) {
@@ -398,6 +399,7 @@ public final class DocumentEngine {
             if (cancellationDate.isBefore(doc.date)) {
                 throw new TradeException("A document cannot be cancelled before its own date");
             }
+            requireGstPeriodOpen(connection, doc, "cancel");
             try (PreparedStatement ps = connection.prepareStatement("SELECT EXISTS (SELECT 1 FROM " + allocations
                     + " WHERE document_id = ? AND removed_date IS NULL)")) {
                 ps.setString(1, documentId);
@@ -487,7 +489,7 @@ public final class DocumentEngine {
     private record LineValues(String itemId, String description, BigDecimal quantity, BigDecimal rate,
                               int discountBp, BigDecimal amount, String warehouseId, String orderLineId,
                               TaxCategory taxCategory, BigDecimal gstRate, BigDecimal cessRate, String hsnSac,
-                              List<LineTax> taxes) {
+                              List<LineTax> taxes, String uqc) {
     }
 
     private Draft validate(Connection connection, DraftRequest request, String selfId) throws SQLException {
@@ -580,6 +582,7 @@ public final class DocumentEngine {
         String description = blankToNull(line.description());
         String warehouse = line.warehouseId();
         String hsnSac = null;
+        String uqc = null;
         if (line.itemId() == null) {
             if (description == null) {
                 throw new TradeException("A line without an item needs a description");
@@ -605,18 +608,25 @@ public final class DocumentEngine {
             }
             description = description == null ? item.name() : description;
             hsnSac = item.hsnSac();
+            uqc = item.uqc();
         }
         if (line.quantity() != null && line.quantity().stripTrailingZeros().scale() > Scale.QUANTITY.digits()) {
             throw new TradeException("A quantity may have at most four decimal places");
         }
         BigDecimal amount = LineMath.amount(line.quantity(), line.rate(), line.discountBp());
         String where = "Line " + number + " (" + description + ")";
+        if (blankToNull(line.hsnSac()) != null) {
+            hsnSac = line.hsnSac().strip();
+        }
+        if (hsnSac != null && !hsnSac.matches("\\d{4}|\\d{6}|\\d{8}")) {
+            throw new TradeException(where + ": \"" + hsnSac + "\" is not an HSN or SAC code (4, 6 or 8 digits)");
+        }
         if (!gst.taxed()) {
             if (line.taxCategory() == TaxCategory.TAXABLE) {
                 throw new TradeException(where + " cannot carry GST: " + gst.untaxedReason() + ".");
             }
             return new LineValues(line.itemId(), description, line.quantity(), line.rate(), line.discountBp(), amount,
-                    warehouse, line.orderLineId(), null, BigDecimal.ZERO, BigDecimal.ZERO, hsnSac, List.of());
+                    warehouse, line.orderLineId(), null, BigDecimal.ZERO, BigDecimal.ZERO, hsnSac, List.of(), uqc);
         }
 
         // P9-2: stated on the line, else the original line's (a note), else the item's on the document date.
@@ -657,7 +667,7 @@ public final class DocumentEngine {
         List<LineTax> taxes = GstCalculator.lineTax(amount, category, gstRate, cessRate, gst.basis().supplyType(),
                 gst.placeKind());
         return new LineValues(line.itemId(), description, line.quantity(), line.rate(), line.discountBp(), amount,
-                warehouse, line.orderLineId(), category, gstRate, cessRate, hsnSac, taxes);
+                warehouse, line.orderLineId(), category, gstRate, cessRate, hsnSac, taxes, uqc);
     }
 
     private void requireWithinUncredited(Connection connection, Header note) throws SQLException {
@@ -1120,6 +1130,29 @@ public final class DocumentEngine {
         }
     }
 
+    /**
+     * P9-14: once the GST return covering a document's date is filed, nothing
+     * dated in that period is posted or cancelled; a correction is a note in an
+     * open period. The schema refuses it too; this says why.
+     */
+    private void requireGstPeriodOpen(Connection connection, Header doc, String action) throws SQLException {
+        String types = side == DocumentKind.Side.SALES
+                ? "'GSTR1', 'GSTR3B', 'CMP08', 'GSTR9'" : "'GSTR3B', 'CMP08', 'GSTR9'";
+        try (PreparedStatement ps = connection.prepareStatement("SELECT return_type, period_from, period_to FROM "
+                + "gst_return WHERE status = 'FILED' AND return_type IN (" + types + ") AND ? BETWEEN period_from "
+                + "AND period_to LIMIT 1")) {
+            ps.setString(1, doc.date.toString());
+            try (ResultSet rows = ps.executeQuery()) {
+                if (rows.next()) {
+                    throw new TradeException("Cannot " + action + " a " + label(doc.kind) + " dated " + doc.date
+                            + ": " + rows.getString(1).replace("GSTR", "GSTR-") + " for " + rows.getString(2) + " to "
+                            + rows.getString(3) + " is filed. Correct it with a "
+                            + label(doc.kind.isNote() ? doc.kind : doc.kind.note()) + " in an open period.");
+                }
+            }
+        }
+    }
+
     /** Why a document bears no GST, or null if it does. */
     private String untaxedReason(GstBasis basis, String partyName) {
         if (side == DocumentKind.Side.SALES) {
@@ -1219,8 +1252,8 @@ public final class DocumentEngine {
     private void insertLines(Connection connection, String documentId, List<LineValues> values) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement("INSERT INTO " + lines
                 + " (id, document_id, sequence, item_id, description, quantity_e4, rate_e4, discount_bp, "
-                + "amount_e4, warehouse_id, order_line_id, tax_category, gst_rate_e4, cess_rate_e4, hsn_sac) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                + "amount_e4, warehouse_id, order_line_id, tax_category, gst_rate_e4, cess_rate_e4, hsn_sac, uqc) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             int sequence = 1;
             for (LineValues line : values) {
                 String lineId = Ids.newIdString();
@@ -1239,6 +1272,7 @@ public final class DocumentEngine {
                 ps.setLong(13, MoneyMapper.toStored(line.gstRate, Scale.TAX_RATE));
                 ps.setLong(14, MoneyMapper.toStored(line.cessRate, Scale.TAX_RATE));
                 ps.setString(15, line.hsnSac);
+                ps.setString(16, line.uqc);
                 ps.executeUpdate();
                 insertTaxLines(connection, lineId, line.taxes);
             }
@@ -1303,7 +1337,7 @@ public final class DocumentEngine {
         }
         try (PreparedStatement ps = connection.prepareStatement("SELECT id, sequence, item_id, description, "
                 + "quantity_e4, rate_e4, discount_bp, amount_e4, warehouse_id, order_line_id, tax_category, "
-                + "gst_rate_e4, cess_rate_e4, hsn_sac FROM " + lines + " WHERE document_id = ? ORDER BY sequence")) {
+                + "gst_rate_e4, cess_rate_e4, hsn_sac, uqc FROM " + lines + " WHERE document_id = ? ORDER BY sequence")) {
             ps.setString(1, documentId);
             try (ResultSet rows = ps.executeQuery()) {
                 while (rows.next()) {
@@ -1315,7 +1349,8 @@ public final class DocumentEngine {
                             rows.getString(10), category == null ? null : TaxCategory.valueOf(category),
                             MoneyMapper.fromStored(rows.getLong(12), Scale.TAX_RATE).stripTrailingZeros(),
                             MoneyMapper.fromStored(rows.getLong(13), Scale.TAX_RATE).stripTrailingZeros(),
-                            rows.getString(14), taxesByLine.getOrDefault(rows.getString(1), List.of())));
+                            rows.getString(14), taxesByLine.getOrDefault(rows.getString(1), List.of()),
+                            rows.getString(15)));
                 }
             }
         }

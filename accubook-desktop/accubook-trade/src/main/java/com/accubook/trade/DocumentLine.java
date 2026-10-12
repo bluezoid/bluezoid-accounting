@@ -12,11 +12,12 @@ import java.util.List;
  * @param taxCategory null on a line written before P9b, or on an untaxed document
  *                    that stated none
  * @param taxes       the line's GST components, empty when it bears none
+ * @param uqc         the GST unit code it was drafted with, or null
  */
 public record DocumentLine(String id, int sequence, String itemId, String description, BigDecimal quantity,
                            BigDecimal rate, int discountBp, BigDecimal amount, String warehouseId,
                            String orderLineId, TaxCategory taxCategory, BigDecimal gstRate, BigDecimal cessRate,
-                           String hsnSac, List<LineTax> taxes) {
+                           String hsnSac, List<LineTax> taxes, String uqc) {
 
     public DocumentLine {
         taxes = List.copyOf(taxes);
