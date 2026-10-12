@@ -21,7 +21,9 @@ import java.util.List;
  * Under reverse charge the vendor is owed the taxable value only, and the tax
  * is owed to the government instead: an RCM Payable leg on the party's side.
  * Non-creditable GST (composition, unregistered) is part of the Purchases
- * amount, not a leg of its own.
+ * amount, not a leg of its own. TDS deducted on a bill reduces what the
+ * vendor is credited and is owed to the government instead; TCS collected on
+ * a sale adds to what the customer is debited.
  *
  * <p>Periodic 5a: no cost of goods sold, no stock ledger.
  */
@@ -54,12 +56,25 @@ public final class PostingPlan {
     public static List<EntryLine> entries(DocumentKind kind, String partyLedgerId, String counterLedgerId,
                                           BigDecimal counterAmount, String roundOffLedgerId, RoundOff money,
                                           List<TaxLeg> taxes, String narration) {
+        return entries(kind, partyLedgerId, money.total(), counterLedgerId, counterAmount, roundOffLedgerId, money,
+                taxes, narration);
+    }
+
+    /**
+     * @param partyAmount what the party is debited or credited: the total, less
+     *                    TDS deducted (with a TDS Payable leg on the party's
+     *                    side), or plus TCS collected (a TCS Payable leg on the
+     *                    counter's side)
+     */
+    public static List<EntryLine> entries(DocumentKind kind, String partyLedgerId, BigDecimal partyAmount,
+                                          String counterLedgerId, BigDecimal counterAmount, String roundOffLedgerId,
+                                          RoundOff money, List<TaxLeg> taxes, String narration) {
         if (money.total().signum() <= 0) {
             throw new TradeException("A document must have a total above zero to post");
         }
         List<EntryLine> entries = new ArrayList<>(3 + taxes.size());
         boolean partyDebit = kind.partyDebited();
-        entries.add(line(partyLedgerId, money.total(), partyDebit, narration));
+        entries.add(line(partyLedgerId, partyAmount, partyDebit, narration));
         if (counterAmount.signum() > 0) {
             entries.add(line(counterLedgerId, counterAmount, !partyDebit, narration));
         }
