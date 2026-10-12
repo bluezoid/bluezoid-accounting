@@ -1,7 +1,7 @@
 # Phase 9 Report — Indian Taxation
 
-**Status:** IN PROGRESS — **P9a ✅** · P9b–P9e not started
-**Design:** `PHASE_9_DESIGN.md` (B-4 and P9-1…P9-4 approved 2026-10-10)
+**Status:** IN PROGRESS — **P9a ✅** · **P9b ✅** · P9c–P9e not started
+**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-8 2026-10-12)
 
 ---
 
@@ -36,13 +36,52 @@
 no exception.
 
 ### Deferred to P9b
-- **Composition eligibility** (turnover limit, special-category states) — needs
-  the prior year's turnover and per-state limits; belongs with composition
-  documents.
-- Validating **party** GSTINs (needed for B2B classification).
+- **Composition eligibility** (turnover limit, special-category states) — done in P9b.
+- Validating **party** GSTINs — done in P9b (on every document).
 
 ### Risks
 - Pack content is unverified (V-1). The plumbing is tested; the numbers are not
   authoritative.
 - `company_info.gst_no` still exists alongside `gst_registration`; the
   registration table is the source of truth from P9b on.
+
+---
+
+## P9b — GST on documents ✅ (2026-10-12)
+
+**Tests:** **708 passing · 0 failing · 0 skipped** with UI on Xvfb (699 + 9 UI)
+**Before P9b:** 657 (+51)
+**Decisions:** P9-5 place of supply (counter sale = company's state), P9-6
+inclusive prices deferred, P9-7 GST ledgers per component and direction,
+P9-8 no document without a GST registration on record.
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| Per-line GST: CGST + SGST/UTGST or IGST, plus ad-valorem cess; each component half-up to the paisa (B-4); rates checked against the slabs on the date | `GstCalculator`, `LineTax` |
+| Place of supply for sales and purchases; counter sale intra-state (P9-5); 99 refused | `PlaceOfSupply` |
+| Company migration 11: `item_tax` (inventory); document GST basis, taxable and tax; line category, rates, HSN/SAC; rebuilt constrained tax-line tables frozen once posted; amount = taxable + tax (− tax under RCM) enforced; no posted row without a GST basis | `Schemas` |
+| 15 system ledgers under Duties & Taxes: Output, Input, RCM Payable × CGST/SGST/UTGST/IGST/Cess (P9-7) | provisioning + migration 11 |
+| `Scale.TAX_RATE` (percent to 4 places: 0.125% fits) | platform |
+| Item GST effective-dated, same-date correction | `Inventory.setTax/taxOn/taxHistory` |
+| Engine: basis on the draft (registration on the date, place of supply, party GSTIN validated, rule pack); lines default from the item; notes reverse on the original's basis and rates; untaxed when composition/unregistered sale or unregistered vendor without RCM; composition inter-state sale refused; posting refuses a draft whose basis changed | `DocumentEngine`, `GstBasis` |
+| Posting: output on sales, input on creditable purchases, RCM payable on the party's side; non-creditable GST in Purchases **and in stock cost** (AS 2) | `PostingPlan` |
+| Composition eligibility: preceding April–March turnover (posted invoices − credit notes, taxable value) vs the state's limit; special-category states in rule pack **2025.10.2** | `GstRegistrations`, `RulePack` |
+
+### Verification
+- `GstDocumentsIT` (15 end-to-end cases, figures by hand) and posting-plan properties (balance, note mirrors, ledger direction).
+- Mutation checks, each caught: creditable composition GST, missing RCM leg, note rate from item, no basis re-check, non-creditable GST left out of cost, RCM vendor owed tax, eligibility `>` → `>=`, HALF_UP → HALF_EVEN, UTGST → SGST. The note-rate mutation first **survived**; the test was strengthened (item rate corrected after invoicing).
+- `./build.sh --plan professional`: jlink resolved (inventory now requires `accubook.tax`); the runtime launched under Xvfb and installed pack 2025.10.2 into a fresh `app.db`.
+
+### Defects found and fixed on the way
+- The party reader called `wasNull()` after `is_active`, not `credit_days`: a party with no credit days got a due date on the document date. Aging was unaffected; the stored date was wrong. Same ordering in `CompanyRegistry` (harmless by luck) corrected.
+
+### Not done / limits
+- Inclusive (MRP) prices (P9-6), specific-rate cess, blocked credit under s.17(5), ITC where the place of supply is another state, tax on quotations and orders (a quotation's free-text line must get a category when converted).
+- A vendor's own composition status is unknown to the party record; its bills must be entered as untaxed lines.
+- Composition turnover is this company file's; the law's aggregate turnover is PAN-wide.
+- No document screen exists yet: the application must pass `CompanyService::rules` to the facades when one is wired (the convenience constructors use the bundled pack).
+- Migration 11 was amended after its first commit (basis triggers), as migration 9 was — acceptable only because nothing has shipped.
+- Open question **P9-9** (composition turnover crossing the limit mid-year) — recorded, not decided.
+
