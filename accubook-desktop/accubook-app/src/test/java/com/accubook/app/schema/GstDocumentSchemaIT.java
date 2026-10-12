@@ -103,7 +103,8 @@ class GstDocumentSchemaIT {
 
             assertThat(scalar(database, "SELECT taxable_e4 || '/' || tax_e4 || '/' || amount_e4 FROM sales_document"))
                     .isEqualTo("1000000/0/1000000");
-            assertThat(scalar(database, "SELECT COUNT(*) FROM ledger WHERE group_id = 'g1'")).isEqualTo("15");
+            assertThat(scalar(database, "SELECT COUNT(*) FROM ledger WHERE group_id = 'g1' "
+                    + "AND system_code LIKE 'GST%'")).isEqualTo("15");
             assertThatThrownBy(() -> exec(database, "UPDATE sales_document SET place_of_supply = '29'"))
                     .as("the new columns are frozen on a posted document").hasMessageContaining("cannot be changed");
         }

@@ -86,7 +86,8 @@ public final class Schemas {
         return List.of(COMPANY_V1_CORE, COMPANY_V2_POSTING_INVARIANTS,
                 COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
                 COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION,
-                COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS);
+                COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
+                COMPANY_V12_WITHHOLDING);
     }
 
     /**
@@ -1532,6 +1533,167 @@ public final class Schemas {
                   WHERE l.id = OLD.line_id) <> 'DRAFT'
             BEGIN
                 SELECT RAISE(ABORT, 'The tax of a posted document cannot be changed');
+            END;
+
+            """.formatted(side);
+    }
+
+    /**
+     * Phase 9c: TDS and TCS.
+     *
+     * <ul>
+     *   <li>{@code withholding_entry} (kernel): one row per document or receipt
+     *       that bears TDS or TCS - section, PAN as it stood, base, the base
+     *       actually taxed (with any catch-up, P9-12), rate and amount. The
+     *       year's thresholds are read from these rows; nothing is cached.</li>
+     *   <li>A document's {@code total_e4} stays its statutory value. What the
+     *       party settles is {@code settle_e4} = total - TDS + TCS, a generated
+     *       column the allocation limits now use.</li>
+     *   <li>A receipt can carry TDS the customer deducted: the bank gets
+     *       {@code amount - tds}; the receipt still settles {@code amount}.</li>
+     *   <li>TDS Payable, TDS Receivable and TCS Payable ledgers (P9-13).</li>
+     * </ul>
+     */
+    private static final Migration COMPANY_V12_WITHHOLDING = new Migration(12, "TDS and TCS", """
+            CREATE TABLE withholding_entry (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                kind            TEXT    NOT NULL CHECK (kind IN ('TDS', 'TCS')),
+                -- PAYABLE: deducted or collected by the company, owed to the
+                -- government. RECEIVABLE: deducted by a customer from a receipt.
+                direction       TEXT    NOT NULL CHECK (direction IN ('PAYABLE', 'RECEIVABLE')),
+                source_type     TEXT    NOT NULL
+                    CHECK (source_type IN ('PURCHASE_DOCUMENT', 'SALES_DOCUMENT', 'SALES_SETTLEMENT')),
+                source_id       TEXT    NOT NULL,
+                party_id        TEXT    NOT NULL REFERENCES party (id),
+                section         TEXT    NOT NULL,
+                pan             TEXT,
+                entry_date      TEXT    NOT NULL,
+                -- Negative for a note, which reduces the base.
+                base_e4         INTEGER NOT NULL,
+                taxed_base_e4   INTEGER NOT NULL,
+                rate_e4         INTEGER NOT NULL CHECK (rate_e4 >= 0),
+                -- P9-11: whole paise.
+                amount_e4       INTEGER NOT NULL CHECK (amount_e4 % 100 = 0),
+                rule_pack_version TEXT,
+                status          TEXT    NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CANCELLED')),
+                cancelled_date  TEXT,
+                created_at      INTEGER NOT NULL,
+                CHECK ((status = 'CANCELLED') = (cancelled_date IS NOT NULL)),
+                CHECK ((base_e4 >= 0 AND taxed_base_e4 >= 0 AND amount_e4 >= 0)
+                       OR (base_e4 <= 0 AND taxed_base_e4 <= 0 AND amount_e4 <= 0)),
+                UNIQUE (source_type, source_id)
+            ) STRICT;
+
+            CREATE INDEX idx_withholding_party ON withholding_entry (party_id, section, entry_date);
+
+            CREATE TRIGGER withholding_entry_no_update BEFORE UPDATE ON withholding_entry
+            WHEN NOT (OLD.status = 'ACTIVE' AND NEW.status = 'CANCELLED'
+                      AND NEW.base_e4 = OLD.base_e4 AND NEW.taxed_base_e4 = OLD.taxed_base_e4
+                      AND NEW.amount_e4 = OLD.amount_e4 AND NEW.section = OLD.section
+                      AND NEW.party_id = OLD.party_id AND NEW.entry_date = OLD.entry_date
+                      AND NEW.source_id = OLD.source_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'A TDS or TCS entry is only ever cancelled with its document');
+            END;
+
+            CREATE TRIGGER withholding_entry_no_delete BEFORE DELETE ON withholding_entry
+            BEGIN
+                SELECT RAISE(ABORT, 'A TDS or TCS entry is never deleted');
+            END;
+
+            """ + withholdingOnDocuments("sales", "tds_e4") + withholdingOnDocuments("purchase", "tcs_e4")
+            + withholdingOnSettlements("sales") + withholdingOnSettlements("purchase")
+            + seedSystemLedger("TDS_PAYABLE", "TDS Payable", "DUTIES_AND_TAXES")
+            + seedSystemLedger("TDS_RECEIVABLE", "TDS Receivable", "DUTIES_AND_TAXES")
+            + seedSystemLedger("TCS_PAYABLE", "TCS Payable", "DUTIES_AND_TAXES"));
+
+    /** @param unused the withholding this side never bears: TDS on sales, TCS on purchases */
+    private static String withholdingOnDocuments(String side, String unused) {
+        return """
+            ALTER TABLE %1$s_document ADD COLUMN withholding_section TEXT;
+            ALTER TABLE %1$s_document ADD COLUMN tds_e4 INTEGER NOT NULL DEFAULT 0 CHECK (tds_e4 >= 0);
+            ALTER TABLE %1$s_document ADD COLUMN tcs_e4 INTEGER NOT NULL DEFAULT 0 CHECK (tcs_e4 >= 0);
+            ALTER TABLE %1$s_document ADD COLUMN settle_e4 INTEGER
+                GENERATED ALWAYS AS (total_e4 - tds_e4 + tcs_e4) VIRTUAL;
+
+            CREATE TRIGGER %1$s_document_withholding_side
+            BEFORE UPDATE OF tds_e4, tcs_e4 ON %1$s_document
+            WHEN NEW.%2$s <> 0 OR NEW.tds_e4 > NEW.total_e4
+            BEGIN
+                SELECT RAISE(ABORT, 'TDS is deducted on purchases and TCS collected on sales, never above the total');
+            END;
+
+            DROP TRIGGER %1$s_document_posted_immutable;
+            CREATE TRIGGER %1$s_document_posted_immutable
+            BEFORE UPDATE ON %1$s_document
+            WHEN OLD.status <> 'DRAFT'
+             AND NOT (OLD.status = 'POSTED' AND NEW.status = 'CANCELLED'
+                      AND NEW.number = OLD.number AND NEW.kind = OLD.kind
+                      AND NEW.party_id = OLD.party_id AND NEW.document_date = OLD.document_date
+                      AND NEW.total_e4 = OLD.total_e4 AND NEW.voucher_id = OLD.voucher_id
+                      AND NEW.amount_e4 = OLD.amount_e4 AND NEW.taxable_e4 = OLD.taxable_e4
+                      AND NEW.tax_e4 = OLD.tax_e4 AND NEW.reverse_charge = OLD.reverse_charge
+                      AND NEW.place_of_supply IS OLD.place_of_supply
+                      AND NEW.supplier_state IS OLD.supplier_state
+                      AND NEW.supply_type IS OLD.supply_type AND NEW.gst_scheme IS OLD.gst_scheme
+                      AND NEW.party_gstin IS OLD.party_gstin
+                      AND NEW.rule_pack_version IS OLD.rule_pack_version
+                      AND NEW.withholding_section IS OLD.withholding_section
+                      AND NEW.tds_e4 = OLD.tds_e4 AND NEW.tcs_e4 = OLD.tcs_e4)
+            BEGIN
+                SELECT RAISE(ABORT, 'A posted document cannot be changed; cancel it instead');
+            END;
+
+            -- What the party settles is total - TDS + TCS.
+            DROP TRIGGER %1$s_allocation_document_limit;
+            CREATE TRIGGER %1$s_allocation_document_limit BEFORE INSERT ON %1$s_allocation
+            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation
+                  WHERE document_id = NEW.document_id AND removed_date IS NULL)
+                 + NEW.amount_e4 > (SELECT settle_e4 FROM %1$s_document WHERE id = NEW.document_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'This would allocate more than the document total');
+            END;
+
+            DROP TRIGGER %1$s_allocation_source_limit;
+            CREATE TRIGGER %1$s_allocation_source_limit BEFORE INSERT ON %1$s_allocation
+            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation
+                  WHERE source_type = NEW.source_type AND source_id = NEW.source_id AND removed_date IS NULL)
+                 + NEW.amount_e4
+                 > CASE NEW.source_type
+                       WHEN 'SETTLEMENT' THEN (SELECT amount_e4 FROM %1$s_settlement WHERE id = NEW.source_id)
+                       ELSE (SELECT settle_e4 FROM %1$s_document WHERE id = NEW.source_id)
+                   END
+            BEGIN
+                SELECT RAISE(ABORT, 'This would allocate more than the receipt, payment or note holds');
+            END;
+
+            """.formatted(side, unused);
+    }
+
+    private static String withholdingOnSettlements(String side) {
+        return """
+            -- TDS the customer deducted: the bank received amount - tds.
+            ALTER TABLE %1$s_settlement ADD COLUMN tds_e4 INTEGER NOT NULL DEFAULT 0
+                CHECK (tds_e4 >= 0 AND tds_e4 %% 100 = 0);
+            ALTER TABLE %1$s_settlement ADD COLUMN tds_section TEXT;
+
+            CREATE TRIGGER %1$s_settlement_tds_insert BEFORE INSERT ON %1$s_settlement
+            WHEN NEW.tds_e4 >= NEW.amount_e4 OR ((NEW.tds_e4 > 0) <> (NEW.tds_section IS NOT NULL))
+                 OR ('%1$s' = 'purchase' AND NEW.tds_e4 > 0)
+            BEGIN
+                SELECT RAISE(ABORT, 'A receipt''s TDS needs its section and is less than the receipt');
+            END;
+
+            DROP TRIGGER %1$s_settlement_immutable;
+            CREATE TRIGGER %1$s_settlement_immutable
+            BEFORE UPDATE ON %1$s_settlement
+            WHEN NOT (OLD.status = 'POSTED' AND NEW.status = 'CANCELLED'
+                      AND NEW.number = OLD.number AND NEW.party_id = OLD.party_id
+                      AND NEW.amount_e4 = OLD.amount_e4 AND NEW.settlement_date = OLD.settlement_date
+                      AND NEW.account_ledger_id = OLD.account_ledger_id AND NEW.voucher_id = OLD.voucher_id
+                      AND NEW.tds_e4 = OLD.tds_e4 AND NEW.tds_section IS OLD.tds_section)
+            BEGIN
+                SELECT RAISE(ABORT, 'A receipt or payment cannot be changed; cancel it instead');
             END;
 
             """.formatted(side);

@@ -84,7 +84,11 @@ public final class CompanyProvisioning {
             // so their ledgers are seeded for every company. Purchases sits in
             // Direct Expenses because inventory is periodic (B-1, 5a).
             new LedgerSeed("SALES", "Sales", "SALES_ACCOUNTS"),
-            new LedgerSeed("PURCHASES", "Purchases", "DIRECT_EXPENSES")),
+            new LedgerSeed("PURCHASES", "Purchases", "DIRECT_EXPENSES"),
+            // P9-13: TDS and TCS are kernel computation (B-7).
+            new LedgerSeed("TDS_PAYABLE", "TDS Payable", CODE_DUTIES_AND_TAXES),
+            new LedgerSeed("TDS_RECEIVABLE", "TDS Receivable", CODE_DUTIES_AND_TAXES),
+            new LedgerSeed("TCS_PAYABLE", "TCS Payable", CODE_DUTIES_AND_TAXES)),
             // P9-7: GST computation is kernel (B-7), so every plan has its ledgers.
             Schemas.GST_LEDGERS.stream().map(l -> new LedgerSeed(l[0], l[1], CODE_DUTIES_AND_TAXES))).toList();
 

@@ -34,6 +34,7 @@ public final class TableOwners {
             // company.db
             "company_info", "fiscal_year", "ledger_group", "ledger", "voucher_type",
             "number_counter", "voucher", "voucher_entry", "audit_log", "party", "gst_registration",
+            "withholding_entry",
             // app.db
             "company", "app_metadata", "rule_pack");
 
