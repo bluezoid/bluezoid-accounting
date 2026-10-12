@@ -88,8 +88,30 @@ public final class Inventory {
 
     public List<Unit> units() {
         return read(connection -> list(connection,
-                "SELECT id, symbol, name, decimals FROM unit ORDER BY symbol",
-                rows -> new Unit(rows.getString(1), rows.getString(2), rows.getString(3), rows.getInt(4))));
+                "SELECT id, symbol, name, decimals, uqc FROM unit ORDER BY symbol",
+                rows -> new Unit(rows.getString(1), rows.getString(2), rows.getString(3), rows.getInt(4),
+                        rows.getString(5))));
+    }
+
+    /**
+     * P9-16: the GST unit quantity code a unit is reported as in returns,
+     * from the rule pack's list. A document line copies it when drafted.
+     */
+    public void setUnitUqc(String unitId, String uqc, RulePack rules) {
+        String code = requireText(uqc, "Choose a GST unit code").toUpperCase(java.util.Locale.ROOT);
+        if (rules.uqc(code).isEmpty()) {
+            throw new InventoryException("\"" + code + "\" is not a GST unit code in rule pack " + rules.version());
+        }
+        require("set a unit's GST code");
+        write("set the unit's GST code", connection -> {
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "UPDATE unit SET uqc = ?, updated_at = ? WHERE id = ?")) {
+                ps.setString(1, code);
+                ps.setLong(2, now());
+                ps.setString(3, unitId);
+                requireOneRow(ps.executeUpdate(), "No such unit: " + unitId);
+            }
+        });
     }
 
     // ============================================================ categories

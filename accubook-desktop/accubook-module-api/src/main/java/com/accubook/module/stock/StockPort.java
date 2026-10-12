@@ -37,9 +37,10 @@ public interface StockPort {
      * What a document needs to know about an item.
      *
      * @param hsnSac HSN code for goods, SAC for services, or null; printed on the document
+     * @param uqc    the unit's GST unit quantity code, or null
      */
     record ItemFacts(String id, String name, boolean goods, boolean active, String unitSymbol, int unitDecimals,
-                     String hsnSac) {
+                     String hsnSac, String uqc) {
     }
 
     Optional<ItemFacts> item(Connection connection, String itemId) throws SQLException;

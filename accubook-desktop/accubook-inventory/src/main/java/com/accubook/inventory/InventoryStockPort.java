@@ -23,7 +23,7 @@ public final class InventoryStockPort implements StockPort {
     @Override
     public Optional<ItemFacts> item(Connection connection, String itemId) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT i.id, i.name, i.kind, i.is_active, u.symbol, u.decimals, i.hsn_sac "
+                "SELECT i.id, i.name, i.kind, i.is_active, u.symbol, u.decimals, i.hsn_sac, u.uqc "
                         + "FROM item i JOIN unit u ON u.id = i.unit_id WHERE i.id = ?")) {
             ps.setString(1, itemId);
             try (ResultSet rows = ps.executeQuery()) {
@@ -32,7 +32,8 @@ public final class InventoryStockPort implements StockPort {
                 }
                 return Optional.of(new ItemFacts(rows.getString(1), rows.getString(2),
                         "GOODS".equals(rows.getString(3)), rows.getInt(4) == 1,
-                        rows.getString(5), rows.getInt(6), rows.getString(7)));
+                        rows.getString(5), rows.getInt(6), rows.getString(7),
+                        rows.getString(8)));
             }
         }
     }
