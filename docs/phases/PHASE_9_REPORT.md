@@ -1,7 +1,7 @@
 # Phase 9 Report — Indian Taxation
 
-**Status:** IN PROGRESS — **P9a ✅** · **P9b ✅** · P9c–P9e not started
-**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-8 2026-10-12)
+**Status:** IN PROGRESS — **P9a ✅** · **P9b ✅** · **P9c ✅** · P9d–P9e not started
+**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-8, P9-10…P9-13 2026-10-12)
 
 ---
 
@@ -84,4 +84,37 @@ P9-8 no document without a GST registration on record.
 - No document screen exists yet: the application must pass `CompanyService::rules` to the facades when one is wired (the convenience constructors use the bundled pack).
 - Migration 11 was amended after its first commit (basis triggers), as migration 9 was — acceptable only because nothing has shipped.
 - Open question **P9-9** (composition turnover crossing the limit mid-year) — recorded, not decided.
+
+---
+
+## P9c — TDS and TCS ✅ (2026-10-12)
+
+**Tests:** **735 passing · 0 failing · 0 skipped** with UI on Xvfb (726 + 9 UI)
+**Before P9c:** 708 (+27)
+**Decisions:** P9-10 scope (TDS both ways, TCS on a test pack only), P9-11
+paisa rounding, P9-12 catch-up on crossing an annual limit, P9-13 one TDS
+Payable + one TDS Receivable (+ TCS Payable).
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| PAN format and holder status (4th letter: individual/HUF or other) | `Pan` |
+| Section resolution by PAN (194C → 194C-IND / 194C-OTH); strict single limits; annual limits with **catch-up** of the year's untaxed amounts (R-18); monthly (194I); excess-only (194Q); no-PAN rate; paisa rounding | `Withholding` |
+| Company migration 12: `withholding_entry` (kernel, cancel-only); documents' TDS/TCS and generated **`settle_e4` = total − TDS + TCS** used by the allocation limits; receipts' customer TDS; TDS Payable, TDS Receivable, TCS Payable ledgers | `Schemas` |
+| Outstanding, settlement status, note application and allocation checks by `settle_e4` | `SettlementEngine`, `DocumentEngine` |
+| TDS on bills / TCS on sales at posting: section checked on the draft, year's (or month's) prior from records, TDS on value before GST, TCS on the whole amount; notes reverse at the original's rate capped at what is left; cancellation cancels the entry; invalid PAN refused | `DocumentEngine` |
+| Customer TDS on receipts: Dr bank net, Dr TDS Receivable, Cr customer gross; section in force; never on payments | `SettlementEngine` |
+
+### Verification
+- `WithholdingTest` (12) and `WithholdingDocumentsIT` (10), figures by hand; `WithholdingSchemaIT` (5).
+- Mutations caught: catch-up removed, single limit `>`→`>=`, HALF_UP→HALF_EVEN, cancelled entries counted, note reverses nothing, TDS on value including GST, bank debited gross.
+- Intermediate commit `83c63c7` verified green in a clean worktree.
+
+### Not done / limits
+- TDS on advance payments before the bill, s.197 lower-deduction certificates, challans (ITNS 281) and Forms 26Q/27Q/16A/27D (P9d).
+- 194Q applies only to a buyer with turnover over ₹10 crore; P9c does not check it.
+- Thresholds read the records posted so far: a bill backdated before others in the year is computed on what had been posted when it was posted.
+- No TCS section is in force in the bundled pack; TCS is exercised on a test pack only.
+- A customer's TDS is recorded as stated; the rate on the record is derived from it.
 
