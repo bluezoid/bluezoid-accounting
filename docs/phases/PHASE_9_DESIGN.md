@@ -68,3 +68,42 @@ the pack before any release (P16 gate)**, as must the development signing keys
 be replaced. The infrastructure — signing, effective dating, import — is what
 P9a builds and tests; the numbers are data and will change.
 
+---
+
+## 6. P9b detailed design — GST on documents
+
+**Status:** DESIGN — awaiting P9-5…P9-7.
+
+### 6.1 Model
+- **Item tax** (inventory-owned, effective-dated, P9-2): category (`TAXABLE`,
+  `NIL_RATED`, `EXEMPT`, `NON_GST`), GST rate (a slab in force on the date) and
+  cess rate. Read by documents through `StockPort` for the document date.
+- **Document line** gains its own category, GST rate and cess rate, defaulted from
+  the item and editable while DRAFT. A free-text line (or a build without
+  inventory) chooses them. No line posts without an explicit category.
+- **Document** gains place of supply and supply type (locked at posting, reports
+  never recompute — reference rule kept), reverse-charge flag (purchases), the
+  registration scheme in force, and the **rule-pack version used**.
+- **Tax lines** (`*_tax_line`, P7-1): one row per component per line — CGST, SGST,
+  UTGST, IGST, cess — each rounded half-up to the paisa (B-4). Intra-state:
+  CGST and SGST (UTGST in a union territory without a legislature) each at half
+  the rate; inter-state: IGST at the full rate.
+- **Posting** adds the tax to the party line and posts each component to its
+  ledger; round-off applies to the tax-inclusive total.
+- **Composition company:** sales are bills of supply (no tax lines; turnover
+  still recorded with place of supply for CMP-08); purchase GST is added to the
+  cost (no input credit). **Eligibility:** registering for composition is refused
+  when the previous year's turnover (Sales ledger) exceeds the limit for the
+  state — rule-pack data, UNVERIFIED (V-1).
+- **Reverse charge (purchase):** the vendor is owed only the taxable value; the
+  company owes the GST itself and may claim it back as input credit (regular) or
+  must expense it (composition).
+
+### 6.2 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P9-5** | Place of supply when it is not obvious | Document-level, **defaulting from the party** (a registered party's state comes from its GSTIN), editable while DRAFT, locked at posting. A **B2B** sale needs the customer's valid GSTIN. An **unregistered customer with no state** (a counter sale) defaults to the **company's own state** — intra-state, as a walk-in sale is. The reference instead fails safe to IGST, which mis-taxes every counter sale. |
+| **P9-6** | Prices entered inclusive of GST (retail MRP) | **Later.** P9b takes prices exclusive of tax, as B2B traders quote. Inclusive entry (back-calculating the taxable value) is a follow-up before retail screens. |
+| **P9-7** | GST ledgers | **Separate ledgers per component and direction** under Duties & Taxes: Output CGST/SGST/UTGST/IGST/Cess, Input CGST/SGST/UTGST/IGST/Cess, and **RCM payable** per component (reverse-charge tax must be paid in cash, so it is kept apart). The reference uses one "GST Output" and one "GST Input", found by name. Created in every plan (computation is kernel, B-7). |
+
