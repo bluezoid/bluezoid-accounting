@@ -33,8 +33,13 @@ public interface StockPort {
         }
     }
 
-    /** What a document needs to know about an item. */
-    record ItemFacts(String id, String name, boolean goods, boolean active, String unitSymbol, int unitDecimals) {
+    /**
+     * What a document needs to know about an item.
+     *
+     * @param hsnSac HSN code for goods, SAC for services, or null; printed on the document
+     */
+    record ItemFacts(String id, String name, boolean goods, boolean active, String unitSymbol, int unitDecimals,
+                     String hsnSac) {
     }
 
     Optional<ItemFacts> item(Connection connection, String itemId) throws SQLException;
