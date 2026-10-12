@@ -16,17 +16,19 @@ import java.util.Objects;
  * @param placeOfSupply      state code, or null to default it from the party (P9-5);
  *                           a note always takes its original's
  * @param reverseCharge      purchase only: the company pays this bill's GST itself
+ * @param withholdingSection TDS section on a purchase (e.g. 194C), TCS section on a
+ *                           sale, or null; a note takes its original's
  */
 public record DraftRequest(DocumentKind kind, String partyId, LocalDate date, LocalDate dueDate,
                            String originalDocumentId, boolean roundOff, String supplierDocumentNo,
                            String narration, List<LineRequest> lines, String quotationId, String placeOfSupply,
-                           boolean reverseCharge) {
+                           boolean reverseCharge, String withholdingSection) {
 
     public DraftRequest(DocumentKind kind, String partyId, LocalDate date, LocalDate dueDate,
                         String originalDocumentId, boolean roundOff, String supplierDocumentNo,
                         String narration, List<LineRequest> lines, String quotationId) {
         this(kind, partyId, date, dueDate, originalDocumentId, roundOff, supplierDocumentNo, narration, lines,
-                quotationId, null, false);
+                quotationId, null, false, null);
     }
 
     public DraftRequest(DocumentKind kind, String partyId, LocalDate date, LocalDate dueDate,
@@ -53,26 +55,31 @@ public record DraftRequest(DocumentKind kind, String partyId, LocalDate date, Lo
 
     public DraftRequest withRoundOff(boolean enabled) {
         return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, enabled, supplierDocumentNo,
-                narration, lines, quotationId, placeOfSupply, reverseCharge);
+                narration, lines, quotationId, placeOfSupply, reverseCharge, withholdingSection);
     }
 
     public DraftRequest withSupplierDocumentNo(String number) {
         return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, roundOff, number,
-                narration, lines, quotationId, placeOfSupply, reverseCharge);
+                narration, lines, quotationId, placeOfSupply, reverseCharge, withholdingSection);
     }
 
     public DraftRequest withQuotation(String id) {
         return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, roundOff, supplierDocumentNo,
-                narration, lines, id, placeOfSupply, reverseCharge);
+                narration, lines, id, placeOfSupply, reverseCharge, withholdingSection);
     }
 
     public DraftRequest withPlaceOfSupply(String stateCode) {
         return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, roundOff, supplierDocumentNo,
-                narration, lines, quotationId, stateCode, reverseCharge);
+                narration, lines, quotationId, stateCode, reverseCharge, withholdingSection);
     }
 
     public DraftRequest withReverseCharge(boolean enabled) {
         return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, roundOff, supplierDocumentNo,
-                narration, lines, quotationId, placeOfSupply, enabled);
+                narration, lines, quotationId, placeOfSupply, enabled, withholdingSection);
+    }
+
+    public DraftRequest withWithholding(String section) {
+        return new DraftRequest(kind, partyId, date, dueDate, originalDocumentId, roundOff, supplierDocumentNo,
+                narration, lines, quotationId, placeOfSupply, reverseCharge, section);
     }
 }

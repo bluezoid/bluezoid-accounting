@@ -17,6 +17,7 @@ import com.accubook.tax.GstComponent;
 import com.accubook.tax.GstRegistration;
 import com.accubook.tax.GstRegistrations;
 import com.accubook.tax.Gstin;
+import com.accubook.tax.Pan;
 import com.accubook.tax.LineTax;
 import com.accubook.tax.PlaceOfSupply;
 import com.accubook.tax.RulePack;
@@ -24,6 +25,8 @@ import com.accubook.tax.RulePackException;
 import com.accubook.tax.StateCode;
 import com.accubook.tax.SupplyType;
 import com.accubook.tax.TaxCategory;
+import com.accubook.tax.Withholding;
+import com.accubook.tax.WithholdingSection;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -113,8 +116,8 @@ public final class DocumentEngine {
                     + (side == DocumentKind.Side.PURCHASE ? "supplier_document_no, " : "quotation_id, ")
                     + "round_off_enabled, amount_e4, round_off_e4, total_e4, narration, created_at, updated_at, "
                     + "taxable_e4, tax_e4, place_of_supply, supplier_state, supply_type, gst_scheme, party_gstin, "
-                    + "reverse_charge, rule_pack_version) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    + "reverse_charge, rule_pack_version, withholding_section) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 int i = 1;
                 ps.setString(i++, id);
                 ps.setString(i++, request.kind().name());
@@ -129,6 +132,7 @@ public final class DocumentEngine {
                 ps.setLong(i + 5, now());
                 ps.setLong(i + 6, now());
                 bindGst(ps, i + 7, draft);
+                ps.setString(i + 16, draft.withholdingSection());
                 ps.executeUpdate();
             }
             insertLines(connection, id, draft.lines);
@@ -204,7 +208,7 @@ public final class DocumentEngine {
                     + "round_off_enabled = ?, amount_e4 = ?, round_off_e4 = ?, total_e4 = ?, "
                     + "narration = ?, updated_at = ?, taxable_e4 = ?, tax_e4 = ?, place_of_supply = ?, "
                     + "supplier_state = ?, supply_type = ?, gst_scheme = ?, party_gstin = ?, reverse_charge = ?, "
-                    + "rule_pack_version = ? WHERE id = ?")) {
+                    + "rule_pack_version = ?, withholding_section = ? WHERE id = ?")) {
                 int i = 1;
                 ps.setString(i++, request.partyId());
                 ps.setString(i++, request.date().toString());
@@ -216,7 +220,8 @@ public final class DocumentEngine {
                 ps.setString(i + 4, blankToNull(request.narration()));
                 ps.setLong(i + 5, now());
                 bindGst(ps, i + 6, draft);
-                ps.setString(i + 15, documentId);
+                ps.setString(i + 15, draft.withholdingSection());
+                ps.setString(i + 16, documentId);
                 ps.executeUpdate();
             }
             insertLines(connection, documentId, draft.lines);
@@ -271,10 +276,19 @@ public final class DocumentEngine {
             String narration = label(doc.kind) + " " + number + " - " + partyName(connection, doc.partyId);
             boolean creditable = creditable(basis);
             BigDecimal tax = docLines.stream().map(DocumentLine::tax).reduce(BigDecimal.ZERO, BigDecimal::add);
+            Withheld withheld = withhold(connection, doc);
+            List<PostingPlan.TaxLeg> legs = new ArrayList<>(taxLegs(connection, basis, docLines));
+            BigDecimal partyAmount = doc.total;
+            if (withheld != null && withheld.amount().signum() > 0) {
+                boolean tds = side == DocumentKind.Side.PURCHASE;
+                legs.add(new PostingPlan.TaxLeg(Lookups.ledgerByCode(connection, tds ? "TDS_PAYABLE" : "TCS_PAYABLE"),
+                        withheld.amount(), !tds));
+                partyAmount = tds ? doc.total.subtract(withheld.amount()) : doc.total.add(withheld.amount());
+            }
             List<EntryLine> entries = PostingPlan.entries(doc.kind, Lookups.partyLedger(connection, doc.partyId),
-                    Lookups.ledgerByCode(connection, side.counterLedgerCode()),
+                    partyAmount, Lookups.ledgerByCode(connection, side.counterLedgerCode()),
                     creditable ? doc.taxable : doc.taxable.add(tax), Lookups.ledgerByCode(connection, "ROUND_OFF"),
-                    money, taxLegs(connection, basis, docLines), narration);
+                    money, legs, narration);
             PostedVoucher voucher = posting.postWithin(connection, new PostingRequest(module, year.id(),
                     Lookups.voucherType(connection, doc.kind.voucherTypeCode()), doc.date, number, narration, entries,
                     "doc:" + documentId));
@@ -291,14 +305,21 @@ public final class DocumentEngine {
             }
 
             try (PreparedStatement ps = connection.prepareStatement("UPDATE " + documents
-                    + " SET status = 'POSTED', number = ?, fiscal_year_id = ?, voucher_id = ?, updated_at = ? "
-                    + "WHERE id = ?")) {
+                    + " SET status = 'POSTED', number = ?, fiscal_year_id = ?, voucher_id = ?, updated_at = ?, "
+                    + "withholding_section = ?, tds_e4 = ?, tcs_e4 = ? WHERE id = ?")) {
+                long withheldE4 = withheld == null ? 0 : MoneyMapper.toStored(withheld.amount(), Scale.MONEY);
                 ps.setString(1, number);
                 ps.setString(2, year.id());
                 ps.setString(3, voucher.voucherId());
                 ps.setLong(4, now());
-                ps.setString(5, documentId);
+                ps.setString(5, withheld == null ? null : withheld.section());
+                ps.setLong(6, side == DocumentKind.Side.PURCHASE ? withheldE4 : 0);
+                ps.setLong(7, side == DocumentKind.Side.SALES ? withheldE4 : 0);
+                ps.setString(8, documentId);
                 ps.executeUpdate();
+            }
+            if (withheld != null) {
+                insertWithholding(connection, doc, withheld);
             }
             if (doc.kind.isNote()) {
                 applyNoteToOriginal(connection, doc);
@@ -411,6 +432,13 @@ public final class DocumentEngine {
                 }
             }
 
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE withholding_entry SET status = "
+                    + "'CANCELLED', cancelled_date = ? WHERE source_type = ? AND source_id = ? AND status = 'ACTIVE'")) {
+                ps.setString(1, cancellationDate.toString());
+                ps.setString(2, withholdingSource());
+                ps.setString(3, documentId);
+                ps.executeUpdate();
+            }
             try (PreparedStatement ps = connection.prepareStatement("UPDATE " + documents
                     + " SET status = 'CANCELLED', cancellation_voucher_id = ?, cancellation_reason = ?, "
                     + "updated_at = ? WHERE id = ?")) {
@@ -452,7 +480,7 @@ public final class DocumentEngine {
     // ============================================================ validation
 
     private record Draft(LocalDate dueDate, RoundOff money, List<LineValues> lines, BigDecimal taxable,
-                         BigDecimal tax, GstBasis gst) {
+                         BigDecimal tax, GstBasis gst, String withholdingSection) {
     }
 
     private record LineValues(String itemId, String description, BigDecimal quantity, BigDecimal rate,
@@ -541,7 +569,9 @@ public final class DocumentEngine {
         if (dueDate != null && dueDate.isBefore(request.date())) {
             throw new TradeException("A due date cannot be before the document date");
         }
-        return new Draft(dueDate, RoundOff.of(amount, request.roundOff()), values, taxable, tax, gst.basis());
+        String withholding = withholdingSection(connection, request, party, original);
+        return new Draft(dueDate, RoundOff.of(amount, request.roundOff()), values, taxable, tax, gst.basis(),
+                withholding);
     }
 
     private LineValues validateLine(Connection connection, LineRequest line, int number, GstContext gst,
@@ -779,6 +809,164 @@ public final class DocumentEngine {
         }
         BigDecimal cost = taxCreditable ? line.amount() : line.amount().add(line.tax());
         return cost.divide(line.quantity(), Scale.MONEY.digits(), RoundingMode.HALF_UP);
+    }
+
+    // ======================================================= TDS and TCS (P9c)
+
+    private WithholdingSection.Kind withholdingKind() {
+        return side == DocumentKind.Side.PURCHASE ? WithholdingSection.Kind.TDS : WithholdingSection.Kind.TCS;
+    }
+
+    private String withholdingSource() {
+        return side == DocumentKind.Side.PURCHASE ? "PURCHASE_DOCUMENT" : "SALES_DOCUMENT";
+    }
+
+    /**
+     * The section a draft names: checked to be in force on its date for this
+     * party. A note takes its original's, so it reverses what was withheld.
+     */
+    private String withholdingSection(Connection connection, DraftRequest request, PartyRow party, Header original)
+            throws SQLException {
+        String chosen = blankToNull(request.withholdingSection());
+        if (original != null) {
+            String was = Lookups.single(connection, "SELECT COALESCE(withholding_section, '') FROM " + documents
+                    + " WHERE id = ?", original.id, "No such document").transform(v -> v.isEmpty() ? null : v);
+            if (chosen != null && !chosen.equalsIgnoreCase(was == null ? "" : was)
+                    && (was == null || !was.toUpperCase(java.util.Locale.ROOT)
+                    .startsWith(chosen.toUpperCase(java.util.Locale.ROOT) + "-"))) {
+                throw new TradeException("A note follows " + original.number + " on "
+                        + withholdingKind() + (was == null ? ", which had none" : " (" + was + ")"));
+            }
+            return was;
+        }
+        if (chosen == null) {
+            return null;
+        }
+        if (party.pan != null && Pan.problem(party.pan).isPresent()) {
+            throw new TradeException("\"" + party.name + "\" has an invalid PAN: " + Pan.problem(party.pan).get()
+                    + ". Correct it, or clear it to deduct at the no-PAN rate.");
+        }
+        try {
+            Withholding.resolve(rules.get(), withholdingKind(), chosen, party.pan, request.date());
+        } catch (RulePackException e) {
+            throw new TradeException(e.getMessage(), e);
+        }
+        return chosen.toUpperCase(java.util.Locale.ROOT);
+    }
+
+    /** TDS or TCS worked out at posting, to be recorded. Amounts are signed: a note's are negative. */
+    private record Withheld(String section, String pan, BigDecimal base, BigDecimal taxedBase, BigDecimal rate,
+                            BigDecimal signedAmount, String rulePackVersion) {
+        BigDecimal amount() {
+            return signedAmount.abs();
+        }
+    }
+
+    /**
+     * Worked out at posting, not on the draft: the threshold depends on what
+     * the party has had this year (or month) under the section, which other
+     * documents posted meanwhile change. TDS is on the value before GST (CBDT
+     * Circular 23/2017); TCS on the whole amount received.
+     */
+    private Withheld withhold(Connection connection, Header doc) throws SQLException {
+        String code = Lookups.single(connection, "SELECT COALESCE(withholding_section, '') FROM " + documents
+                + " WHERE id = ?", doc.id, "No such document");
+        if (code.isEmpty()) {
+            return null;
+        }
+        PartyRow party = party(connection, doc.partyId);
+        BigDecimal base = side == DocumentKind.Side.PURCHASE ? doc.taxable : doc.total;
+        RulePack pack = rules.get();
+        if (doc.kind.isNote()) {
+            return reverseOnNote(connection, doc, code, party, base, pack);
+        }
+        WithholdingSection section;
+        try {
+            section = Withholding.resolve(pack, withholdingKind(), code, party.pan, doc.date);
+        } catch (RulePackException e) {
+            throw new TradeException(e.getMessage(), e);
+        }
+        LocalDate from = section.thresholdType() == WithholdingSection.ThresholdType.MONTHLY
+                ? doc.date.withDayOfMonth(1) : Withholding.yearStart(doc.date);
+        LocalDate to = section.thresholdType() == WithholdingSection.ThresholdType.MONTHLY
+                ? from.plusMonths(1).minusDays(1) : from.plusYears(1).minusDays(1);
+        Withholding.Prior prior;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT COALESCE(SUM(base_e4), 0), "
+                + "COALESCE(SUM(taxed_base_e4), 0) FROM withholding_entry WHERE party_id = ? AND kind = ? "
+                + "AND direction = 'PAYABLE' AND section = ? AND status = 'ACTIVE' AND entry_date BETWEEN ? AND ?")) {
+            ps.setString(1, doc.partyId);
+            ps.setString(2, withholdingKind().name());
+            ps.setString(3, section.section());
+            ps.setString(4, from.toString());
+            ps.setString(5, to.toString());
+            try (ResultSet rows = ps.executeQuery()) {
+                rows.next();
+                prior = new Withholding.Prior(MoneyMapper.fromStored(rows.getLong(1), Scale.MONEY),
+                        MoneyMapper.fromStored(rows.getLong(2), Scale.MONEY));
+            }
+        }
+        Withholding.Result result = Withholding.compute(section, party.pan, base, prior);
+        if (side == DocumentKind.Side.PURCHASE && result.amount().compareTo(doc.total) > 0) {
+            throw new TradeException("TDS of " + result.amount().toPlainString() + " would exceed the bill's total");
+        }
+        return new Withheld(section.section(), party.pan, base, result.taxedBase(), result.rate(), result.amount(),
+                pack.version());
+    }
+
+    /**
+     * A note reverses its original's withholding at the original's rate, on the
+     * note's own base, never beyond what is left of the original's amount. An
+     * original below the threshold had nothing withheld, so neither has its note.
+     */
+    private Withheld reverseOnNote(Connection connection, Header note, String section, PartyRow party,
+                                   BigDecimal base, RulePack pack) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT o.rate_e4, o.amount_e4 + COALESCE((SELECT SUM(n.amount_e4) FROM withholding_entry n
+                           JOIN %1$s d ON d.id = n.source_id
+                           WHERE n.source_type = o.source_type AND d.original_document_id = o.source_id
+                             AND n.status = 'ACTIVE'), 0),
+                       o.taxed_base_e4
+                FROM withholding_entry o WHERE o.source_type = ? AND o.source_id = ? AND o.status = 'ACTIVE'
+                """.formatted(documents))) {
+            ps.setString(1, withholdingSource());
+            ps.setString(2, note.originalId);
+            try (ResultSet rows = ps.executeQuery()) {
+                if (!rows.next()) {
+                    throw new TradeException("The document this note corrects has no " + withholdingKind()
+                            + " record to reverse");
+                }
+                BigDecimal rate = MoneyMapper.fromStored(rows.getLong(1), Scale.TAX_RATE).stripTrailingZeros();
+                BigDecimal remaining = MoneyMapper.fromStored(rows.getLong(2), Scale.MONEY);
+                boolean taxed = rows.getLong(3) > 0;
+                BigDecimal amount = taxed
+                        ? base.multiply(rate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP).min(remaining)
+                        : BigDecimal.ZERO;
+                return new Withheld(section, party.pan, base.negate(), taxed ? base.negate() : BigDecimal.ZERO, rate,
+                        amount.negate(), pack.version());
+            }
+        }
+    }
+
+    private void insertWithholding(Connection connection, Header doc, Withheld w) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO withholding_entry (id, kind, direction, "
+                + "source_type, source_id, party_id, section, pan, entry_date, base_e4, taxed_base_e4, rate_e4, "
+                + "amount_e4, rule_pack_version, created_at) VALUES (?, ?, 'PAYABLE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setString(1, Ids.newIdString());
+            ps.setString(2, withholdingKind().name());
+            ps.setString(3, withholdingSource());
+            ps.setString(4, doc.id);
+            ps.setString(5, doc.partyId);
+            ps.setString(6, w.section());
+            ps.setString(7, w.pan() == null ? null : Pan.normalise(w.pan()));
+            ps.setString(8, doc.date.toString());
+            ps.setLong(9, MoneyMapper.toStored(w.base(), Scale.MONEY));
+            ps.setLong(10, MoneyMapper.toStored(w.taxedBase(), Scale.MONEY));
+            ps.setLong(11, MoneyMapper.toStored(w.rate(), Scale.TAX_RATE));
+            ps.setLong(12, MoneyMapper.toStored(w.signedAmount(), Scale.MONEY));
+            ps.setString(13, w.rulePackVersion());
+            ps.setLong(14, now());
+            ps.executeUpdate();
+        }
     }
 
     // =================================================================== GST
@@ -1100,7 +1288,7 @@ public final class DocumentEngine {
                 + "due_date, status, original_document_id, amount_e4, round_off_e4, total_e4, voucher_id, "
                 + "cancellation_voucher_id, "
                 + (side == DocumentKind.Side.PURCHASE ? "supplier_document_no" : "NULL") + ", narration, "
-                + "taxable_e4, tax_e4 FROM " + documents + where)) {
+                + "taxable_e4, tax_e4, withholding_section, tds_e4, tcs_e4 FROM " + documents + where)) {
             for (int i = 0; i < parameters.length; i++) {
                 ps.setString(i + 1, parameters[i]);
             }
@@ -1116,7 +1304,9 @@ public final class DocumentEngine {
                             MoneyMapper.fromStored(rows.getLong(11), Scale.MONEY), rows.getString(12),
                             rows.getString(13), rows.getString(14), rows.getString(15), List.of(),
                             MoneyMapper.fromStored(rows.getLong(16), Scale.MONEY),
-                            MoneyMapper.fromStored(rows.getLong(17), Scale.MONEY), null));
+                            MoneyMapper.fromStored(rows.getLong(17), Scale.MONEY), null, rows.getString(18),
+                            MoneyMapper.fromStored(rows.getLong(19), Scale.MONEY),
+                            MoneyMapper.fromStored(rows.getLong(20), Scale.MONEY)));
                 }
             }
         }
@@ -1125,18 +1315,19 @@ public final class DocumentEngine {
             withLines.add(new Document(d.id(), d.kind(), d.number(), d.partyId(), d.date(), d.dueDate(), d.status(),
                     d.originalDocumentId(), d.amount(), d.roundOff(), d.total(), d.voucherId(),
                     d.cancellationVoucherId(), d.supplierDocumentNo(), d.narration(), loadLines(connection, d.id()),
-                    d.taxable(), d.tax(), basis(connection, d.id()).orElse(null)));
+                    d.taxable(), d.tax(), basis(connection, d.id()).orElse(null), d.withholdingSection(), d.tds(),
+                    d.tcs()));
         }
         return withLines;
     }
 
     private record PartyRow(String name, String role, boolean active, Integer creditDays, String gstin,
-                            String stateCode) {
+                            String stateCode, String pan) {
     }
 
     private static PartyRow party(Connection connection, String partyId) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement("SELECT l.name, p.role, l.is_active, p.credit_days, "
-                + "p.gstin, p.state_code FROM party p JOIN ledger l ON l.id = p.ledger_id WHERE p.id = ?")) {
+                + "p.gstin, p.state_code, p.pan FROM party p JOIN ledger l ON l.id = p.ledger_id WHERE p.id = ?")) {
             ps.setString(1, partyId);
             try (ResultSet rows = ps.executeQuery()) {
                 if (!rows.next()) {
@@ -1146,7 +1337,7 @@ public final class DocumentEngine {
                 int days = rows.getInt(4);
                 Integer creditDays = rows.wasNull() ? null : days;
                 return new PartyRow(rows.getString(1), rows.getString(2), rows.getInt(3) == 1, creditDays,
-                        blankToNull(rows.getString(5)), blankToNull(rows.getString(6)));
+                        blankToNull(rows.getString(5)), blankToNull(rows.getString(6)), blankToNull(rows.getString(7)));
             }
         }
     }
