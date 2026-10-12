@@ -72,4 +72,52 @@ class PostingPlanPropertyTest {
         assertThat(note.get("customer").signum()).isNegative();      // receivable down
         assertThat(note.get("sales").signum()).isPositive();         // revenue down
     }
+
+    /**
+     * A taxed document: taxable value, output or input GST, and - under reverse
+     * charge - the same tax payable by the company rather than to the party.
+     */
+    private static List<EntryLine> taxed(DocumentKind kind, long taxablePaise, long taxPaise, boolean reverseCharge,
+                                         boolean round) {
+        BigDecimal taxable = BigDecimal.valueOf(taxablePaise, 2);
+        BigDecimal tax = BigDecimal.valueOf(taxPaise, 2);
+        RoundOff money = RoundOff.of(reverseCharge ? taxable : taxable.add(tax), round);
+        List<PostingPlan.TaxLeg> legs = reverseCharge
+                ? List.of(new PostingPlan.TaxLeg("gst", tax, true), new PostingPlan.TaxLeg("rcm", tax, false))
+                : List.of(new PostingPlan.TaxLeg("gst", tax, true));
+        return PostingPlan.entries(kind, "party", "counter", taxable, "roundoff", money, legs, null);
+    }
+
+    @Property(tries = 1000)
+    void aTaxedPlanBalances_andANoteMirrorsIt(@ForAll @LongRange(min = 100, max = 10_000_000_000L) long taxable,
+                                              @ForAll @LongRange(min = 0, max = 4_000_000_000L) long tax,
+                                              @ForAll boolean round, @ForAll boolean sales,
+                                              @ForAll boolean reverseCharge) {
+        DocumentKind parent = sales ? DocumentKind.SALES_INVOICE : DocumentKind.PURCHASE_BILL;
+        boolean rc = reverseCharge && !sales;
+        List<EntryLine> forward = taxed(parent, taxable, tax, rc, round);
+
+        BigDecimal debit = forward.stream().map(EntryLine::debit).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal credit = forward.stream().map(EntryLine::credit).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(debit).isEqualByComparingTo(credit);
+
+        Map<String, BigDecimal> back = net(taxed(parent.note(), taxable, tax, rc, round));
+        net(forward).forEach((ledger, value) -> assertThat(back.get(ledger)).isEqualByComparingTo(value.negate()));
+    }
+
+    @Property(tries = 200)
+    void outputTaxIsALiability_inputTaxAnAsset_reverseChargeBoth(
+            @ForAll @LongRange(min = 100, max = 10_000_000L) long taxable,
+            @ForAll @LongRange(min = 1, max = 4_000_000L) long tax) {
+        Map<String, BigDecimal> sale = net(taxed(DocumentKind.SALES_INVOICE, taxable, tax, false, false));
+        Map<String, BigDecimal> bill = net(taxed(DocumentKind.PURCHASE_BILL, taxable, tax, false, false));
+        Map<String, BigDecimal> rcm = net(taxed(DocumentKind.PURCHASE_BILL, taxable, tax, true, false));
+
+        assertThat(sale.get("gst").signum()).as("output GST credited").isNegative();
+        assertThat(bill.get("gst").signum()).as("input GST debited").isPositive();
+        assertThat(rcm.get("gst").signum()).as("RCM: input credit taken").isPositive();
+        assertThat(rcm.get("rcm").signum()).as("RCM: tax owed to the government").isNegative();
+        assertThat(rcm.get("party").negate()).as("RCM: the vendor is owed the taxable value only")
+                .isEqualByComparingTo(BigDecimal.valueOf(taxable, 2));
+    }
 }
