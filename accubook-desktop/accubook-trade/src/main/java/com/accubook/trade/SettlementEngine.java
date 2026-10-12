@@ -267,13 +267,14 @@ public final class SettlementEngine {
 
     public SettlementStatus status(String documentId, LocalDate today) {
         return read(connection -> {
-            try (PreparedStatement ps = connection.prepareStatement("SELECT total_e4, due_date, document_date FROM "
+            try (PreparedStatement ps = connection.prepareStatement("SELECT settle_e4, due_date, document_date FROM "
                     + documents + " WHERE id = ? AND status = 'POSTED' AND original_document_id IS NULL")) {
                 ps.setString(1, documentId);
                 try (ResultSet rows = ps.executeQuery()) {
                     if (!rows.next()) {
                         throw new TradeException("Only a posted invoice or bill has a settlement status");
                     }
+                    // What the party settles: total less TDS, plus TCS.
                     BigDecimal total = MoneyMapper.fromStored(rows.getLong(1), Scale.MONEY);
                     String due = rows.getString(2);
                     return SettlementStatus.of(total, outstanding(documentId, today),
@@ -290,7 +291,7 @@ public final class SettlementEngine {
             List<OutstandingDocument> result = new ArrayList<>();
             try (PreparedStatement ps = connection.prepareStatement("""
                     SELECT d.id, d.number, d.party_id, d.document_date, d.due_date, d.total_e4,
-                           d.total_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM %2$s a
+                           d.settle_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM %2$s a
                                                   WHERE a.document_id = d.id AND a.effective_date <= ?1
                                                     AND (a.removed_date IS NULL OR a.removed_date > ?1)), 0)
                                AS outstanding_e4
@@ -340,7 +341,7 @@ public final class SettlementEngine {
                            OR (SELECT voucher_date FROM voucher WHERE id = s.cancellation_voucher_id) > ?1)
                     UNION ALL
                     SELECT 'NOTE', n.id, n.number, n.party_id, n.document_date,
-                           n.total_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM %2$s a
+                           n.settle_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM %2$s a
                                WHERE a.source_type = 'NOTE' AND a.source_id = n.id AND %4$s), 0)
                     FROM %3$s n
                     WHERE n.original_document_id IS NOT NULL AND n.document_date <= ?1
@@ -378,7 +379,7 @@ public final class SettlementEngine {
         String partyOfDocument;
         long outstandingE4;
         try (PreparedStatement ps = connection.prepareStatement("SELECT document_date, party_id, status, "
-                + "original_document_id, number, total_e4 - COALESCE((SELECT SUM(amount_e4) FROM " + allocations
+                + "original_document_id, number, settle_e4 - COALESCE((SELECT SUM(amount_e4) FROM " + allocations
                 + " WHERE document_id = d.id AND removed_date IS NULL), 0) FROM " + documents + " d WHERE d.id = ?")) {
             ps.setString(1, allocation.documentId());
             try (ResultSet rows = ps.executeQuery()) {

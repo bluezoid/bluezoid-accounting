@@ -315,16 +315,20 @@ public final class DocumentEngine {
      */
     private void applyNoteToOriginal(Connection connection, Header note) throws SQLException {
         long outstandingE4;
-        try (PreparedStatement ps = connection.prepareStatement("SELECT d.total_e4 - COALESCE((SELECT SUM(amount_e4) "
-                + "FROM " + allocations + " WHERE document_id = d.id AND removed_date IS NULL), 0) FROM "
-                + documents + " d WHERE d.id = ?")) {
-            ps.setString(1, note.originalId);
+        long noteSettleE4;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT d.settle_e4 - COALESCE((SELECT SUM(amount_e4) "
+                + "FROM " + allocations + " WHERE document_id = d.id AND removed_date IS NULL), 0), "
+                + "(SELECT settle_e4 FROM " + documents + " WHERE id = ?) FROM " + documents + " d WHERE d.id = ?")) {
+            ps.setString(1, note.id);
+            ps.setString(2, note.originalId);
             try (ResultSet rows = ps.executeQuery()) {
                 rows.next();
                 outstandingE4 = rows.getLong(1);
+                noteSettleE4 = rows.getLong(2);
             }
         }
-        long apply = Math.min(outstandingE4, MoneyMapper.toStored(note.total, Scale.MONEY));
+        // What the note settles: its total less the TDS it reverses, plus the TCS.
+        long apply = Math.min(outstandingE4, noteSettleE4);
         if (apply <= 0) {
             return;
         }
