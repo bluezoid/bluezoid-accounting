@@ -166,7 +166,7 @@ credit under s.17(5), tax on quotations and orders, exports/SEZ (P9-3).
 
 ## 8. P9d detailed design — returns (`taxation-returns` add-on)
 
-**Status:** DESIGN — awaiting P9-9, P9-14…P9-16.
+**Status:** APPROVED 2026-10-12 (P9-9, P9-14…P9-16 as recommended).
 
 ### 8.1 Packaging
 `taxation-returns` is an add-on at any tier (B-7). It **reads** what every plan

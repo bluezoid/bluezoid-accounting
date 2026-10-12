@@ -6,9 +6,9 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-8, P9-10…P9-13 (2026-10-12).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12).
 
-**Still open:** B-2 · B-5 · P9-9 · I-3, I-6…I-18 · N-2…N-9.
+**Still open:** B-2 · B-5 · I-3, I-6…I-18 · N-2…N-9.
 
 ## Classification
 
@@ -316,6 +316,37 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 > - **P7-5 Stock coupling:** posting an invoice/bill moves stock in the same
 >   transaction. Delivery notes arrive with orders in P7e.
 > - **P7-6 Plan:** sub-phases P7a → P7e.
+
+## P9-10…P9-13 · P9c TDS and TCS — ✅ **APPROVED 2026-10-12**
+
+> As recommended in `PHASE_9_DESIGN.md` §7.3.
+>
+> - **P9-10:** TDS deducted on purchase bills and debit notes; TDS deducted by
+>   customers on our receipts (TDS receivable); TCS on sales invoices built and
+>   tested on a test pack only (no section in force). Later: TDS on advances,
+>   s.197 certificates, challans and 26Q/27Q/16A (P9d).
+> - **P9-11:** TDS rounded half-up to the paisa.
+> - **P9-12:** crossing an annual threshold deducts on the year's whole
+>   aggregate for that party and section (catch-up), not the crossing bill
+>   alone (R-18).
+> - **P9-13:** one TDS Payable and one TDS Receivable ledger; deductions tagged
+>   with their section.
+
+## P9-9, P9-14…P9-16 · Composition limit, filed returns — ✅ **APPROVED 2026-10-12**
+
+> As recommended in `PHASE_9_DESIGN.md` §8.4.
+>
+> - **P9-9:** a composition sales invoice that would take the year's turnover
+>   above the limit is **refused**; the dealer records a regular registration
+>   from that date, after which it is a tax invoice.
+> - **P9-14:** "mark filed" stores a snapshot (figures + hash) and **locks the
+>   period for GST documents** (no new, backdated or cancelled document dated in
+>   it); corrections by note or amendment in an open period; unlocking is an
+>   audited admin action with a reason.
+> - **P9-15:** returns are produced as the portal's offline-upload **JSON**; no
+>   direct GSP filing (reconsider with P13).
+> - **P9-16:** units carry a GST **UQC** from the rule pack (missing → `OTH`,
+>   warning); a taxable line without HSN/SAC **blocks** marking the return filed.
 
 ## P9-10…P9-13 · P9c TDS and TCS — ✅ **APPROVED 2026-10-12**
 
