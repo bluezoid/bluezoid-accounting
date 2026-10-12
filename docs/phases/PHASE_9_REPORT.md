@@ -1,7 +1,7 @@
 # Phase 9 Report — Indian Taxation
 
-**Status:** IN PROGRESS — **P9a ✅** · **P9b ✅** · **P9c ✅** · P9d–P9e not started
-**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-8, P9-10…P9-13 2026-10-12)
+**Status:** IN PROGRESS — **P9a ✅** · **P9b ✅** · **P9c ✅** · P9d in progress (**P9d-1 ✅ P9d-2 ✅**) · P9e not started
+**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-16 2026-10-12)
 
 ---
 
@@ -117,4 +117,42 @@ Payable + one TDS Receivable (+ TCS Payable).
 - Thresholds read the records posted so far: a bill backdated before others in the year is computed on what had been posted when it was posted.
 - No TCS section is in force in the bundled pack; TCS is exercised on a test pack only.
 - A customer's TDS is recorded as stated; the rate on the record is derived from it.
+
+---
+
+## P9d-1, P9d-2 — GSTR-1 and GSTR-3B ✅ (2026-10-12)
+
+**Tests:** **760 passing · 0 failing · 0 skipped** with UI on Xvfb (751 + 9 UI)
+**Before:** 735 (+25)
+**Decisions:** P9-9 composition invoice over the limit refused; P9-14 filing
+snapshots and locks the period; P9-15 portal JSON only; P9-16 UQC warns, HSN
+blocks.
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| P9-9: the bill of supply that takes a composition dealer's year over the limit is refused, pointing to a regular registration from that date | `DocumentEngine` |
+| Rule pack 2025.10.3: GST UQC list (45 codes, UNVERIFIED) | `rulepack-2025.10.3.txt` |
+| Migration 13: unit and line UQC; `gst_return` (JSON + SHA-256, unlock-only); triggers lock filed periods (GSTR-1 → sales; 3B/CMP-08/9 → both) | `Schemas` |
+| Units' GST code; lines keep HSN/SAC and UQC; free-text lines state HSN/SAC (4/6/8 digits); posting/cancelling in a filed period refused with the return named | `Inventory`, `DocumentEngine` |
+| **`accubook-taxation-returns`** add-on (requires no document module): GSTR-1 (B2B, B2CL > rule-pack limit, B2CS, CDNR, CDNUR, NIL in three columns, HSN B2B/B2C with UQC, documents incl. cancelled), GSTR-3B (outward, 3.2, RCM, ITC as per books, exempt inward, Rule 88A suggested set-off), portal JSON, mark filed / unlock | `Gstr1Builder`, `Gstr3bBuilder`, `GstReturns` |
+
+### Findings
+- **R-19** B2CL limit stale (₹2.5 lakh, `>=`); **R-20** cancelled count always 0;
+  **R-21** unit symbol reported as UQC. Each reproduced by a mutation that the
+  tests catch.
+
+### Verification
+- `Gstr1IT` (6), `Gstr3bIT` (2), `SetOffTest` (4), `GstReturnSchemaIT` (5), module tests (4).
+- `./build.sh --plan basic --add-on taxation-returns`: jlink resolved 13 modules
+  incl. `accubook.taxation.returns`; the runtime launched under Xvfb, no errors.
+
+### Limits
+- Portal JSON follows the published field names, **not validated against
+  GSTN's offline tool** — a release gate with V-1. The tool's `version`/`hash`
+  are left for it to add; HSN is emitted as `hsn_b2b`/`hsn_b2c`.
+- ITC is as per books; GSTR-2B matching is P9d-3. No blocked credit (s.17(5)),
+  so 4(B) and 4(D) are nil. No exports/SEZ, advances, amendments (B2BA etc.).
+- Services report UQC `NA` with zero quantity (assumed portal convention, V-1).
 
