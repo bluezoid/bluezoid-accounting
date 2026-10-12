@@ -104,7 +104,9 @@ class DocumentSchemaIT {
             assertThatThrownBy(() -> exec(database, "UPDATE sales_document SET number = 'INV/26-27/00001' WHERE id = 'd1'"))
                     .hasMessageContaining("CHECK");
             assertThatThrownBy(() -> exec(database, "UPDATE sales_document SET status = 'POSTED', "
-                    + "number = 'INV/26-27/00001' WHERE id = 'd1'")).hasMessageContaining("CHECK");
+                    + "number = 'INV/26-27/00001', gst_scheme = 'REGULAR', place_of_supply = '27', "
+                    + "supply_type = 'INTRA_STATE', rule_pack_version = '2025.10.1' WHERE id = 'd1'"))
+                    .as("no voucher").hasMessageContaining("CHECK");
             assertThatThrownBy(() -> exec(database, "UPDATE sales_document SET amount_e4 = 1000000, taxable_e4 = 1000000, "
                     + "total_e4 = 999900 "
                     + "WHERE id = 'd1'")).as("total = amount + round off").hasMessageContaining("CHECK");

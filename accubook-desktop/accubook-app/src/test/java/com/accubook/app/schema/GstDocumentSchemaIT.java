@@ -110,6 +110,19 @@ class GstDocumentSchemaIT {
     }
 
     @Test
+    @DisplayName("P9-8: a document cannot post without its GST basis, by update or by insert")
+    void postsOnlyWithBasis(@TempDir Path dir) throws Exception {
+        try (Database database = company(dir)) {
+            assertThatThrownBy(() -> exec(database, POST)).hasMessageContaining("GST basis");
+            assertThatThrownBy(() -> exec(database, "INSERT INTO sales_document (id, kind, number, party_id, "
+                    + "document_date, status, amount_e4, taxable_e4, total_e4, fiscal_year_id, voucher_id, created_at, "
+                    + "updated_at) VALUES ('d2', 'SALES_INVOICE', 'X', 'p1', '2026-05-01', 'POSTED', 100, 100, 100, "
+                    + "(SELECT id FROM fiscal_year), 'v1', 0, 0)")).hasMessageContaining("GST basis");
+            assertThatCode(() -> exec(database, POST + BASIS)).doesNotThrowAnyException();
+        }
+    }
+
+    @Test
     @DisplayName("the amount is taxable value plus tax - or the taxable value alone under reverse charge")
     void amountRule(@TempDir Path dir) throws Exception {
         try (Database database = company(dir)) {

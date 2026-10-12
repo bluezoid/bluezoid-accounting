@@ -1389,6 +1389,7 @@ public final class Schemas {
      *       the taxable value plus tax, less tax under reverse charge, which the
      *       company pays itself. Existing documents carried no tax, so their
      *       taxable value is their amount.</li>
+     *   <li>A document cannot post without a GST basis (P9-8).</li>
      *   <li>The empty P7-1 tax-line tables are rebuilt with their constraints.</li>
      *   <li>GST ledgers per component and direction (P9-7).</li>
      * </ul>
@@ -1464,6 +1465,25 @@ public final class Schemas {
             WHEN NEW.amount_e4 <> NEW.taxable_e4 + CASE WHEN NEW.reverse_charge = 1 THEN 0 ELSE NEW.tax_e4 END
             BEGIN
                 SELECT RAISE(ABORT, 'A document amount is its taxable value plus tax (less reverse-charge tax)');
+            END;
+
+            -- P9-8: nothing posts without the basis it was taxed on.
+            CREATE TRIGGER %1$s_document_posts_with_gst_basis
+            BEFORE UPDATE OF status ON %1$s_document
+            WHEN OLD.status = 'DRAFT' AND NEW.status = 'POSTED'
+             AND (NEW.gst_scheme IS NULL OR NEW.place_of_supply IS NULL OR NEW.supply_type IS NULL
+                  OR NEW.rule_pack_version IS NULL)
+            BEGIN
+                SELECT RAISE(ABORT, 'A document posts only with its GST basis recorded');
+            END;
+
+            CREATE TRIGGER %1$s_document_inserted_posted_with_gst_basis
+            BEFORE INSERT ON %1$s_document
+            WHEN NEW.status <> 'DRAFT'
+             AND (NEW.gst_scheme IS NULL OR NEW.place_of_supply IS NULL OR NEW.supply_type IS NULL
+                  OR NEW.rule_pack_version IS NULL)
+            BEGIN
+                SELECT RAISE(ABORT, 'A document posts only with its GST basis recorded');
             END;
 
             -- Null on lines written before P9b, which carried no GST.
