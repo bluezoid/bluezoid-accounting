@@ -87,7 +87,7 @@ public final class Schemas {
                 COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
                 COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION,
                 COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
-                COMPANY_V12_WITHHOLDING);
+                COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS);
     }
 
     /**
@@ -1606,6 +1606,91 @@ public final class Schemas {
             + seedSystemLedger("TDS_PAYABLE", "TDS Payable", "DUTIES_AND_TAXES")
             + seedSystemLedger("TDS_RECEIVABLE", "TDS Receivable", "DUTIES_AND_TAXES")
             + seedSystemLedger("TCS_PAYABLE", "TCS Payable", "DUTIES_AND_TAXES"));
+
+    /**
+     * Phase 9d: GST returns.
+     *
+     * <ul>
+     *   <li>A unit's GST unit quantity code (P9-16); a document line keeps the
+     *       code it was drafted with, as it keeps its HSN.</li>
+     *   <li>{@code gst_return} ({@code taxation-returns}): a filed return's
+     *       portal JSON and its SHA-256, never edited; only unlocked, with a
+     *       reason (P9-14).</li>
+     *   <li>A filed return locks its period: a document dated in it cannot be
+     *       posted or cancelled. GSTR-1 locks sales; GSTR-3B, CMP-08 and GSTR-9
+     *       lock both sides. The lock outlives the add-on: a customer who stops
+     *       paying for returns keeps the protection on what was filed.</li>
+     * </ul>
+     */
+    private static final Migration COMPANY_V13_GST_RETURNS = new Migration(13, "GST returns", """
+            ALTER TABLE unit ADD COLUMN uqc TEXT CHECK (uqc IS NULL OR length(uqc) = 3);
+            ALTER TABLE sales_document_line ADD COLUMN uqc TEXT;
+            ALTER TABLE purchase_document_line ADD COLUMN uqc TEXT;
+
+            CREATE TABLE gst_return (
+                id                TEXT    NOT NULL PRIMARY KEY,
+                return_type       TEXT    NOT NULL CHECK (return_type IN ('GSTR1', 'GSTR3B', 'CMP08', 'GSTR9')),
+                period_from       TEXT    NOT NULL,
+                period_to         TEXT    NOT NULL,
+                gstin             TEXT    NOT NULL,
+                status            TEXT    NOT NULL DEFAULT 'FILED' CHECK (status IN ('FILED', 'UNLOCKED')),
+                -- The date the user filed it on the portal, and its acknowledgement.
+                filed_on          TEXT    NOT NULL,
+                acknowledgement   TEXT,
+                -- The portal JSON exactly as generated, and its SHA-256.
+                snapshot          TEXT    NOT NULL,
+                snapshot_sha256   TEXT    NOT NULL CHECK (length(snapshot_sha256) = 64),
+                rule_pack_version TEXT    NOT NULL,
+                unlocked_on       TEXT,
+                unlock_reason     TEXT,
+                created_at        INTEGER NOT NULL,
+                CHECK (period_to >= period_from),
+                CHECK ((status = 'UNLOCKED') = (unlock_reason IS NOT NULL AND unlocked_on IS NOT NULL))
+            ) STRICT;
+
+            CREATE UNIQUE INDEX idx_gst_return_filed ON gst_return (return_type, period_from)
+                WHERE status = 'FILED';
+
+            CREATE TRIGGER gst_return_no_delete BEFORE DELETE ON gst_return
+            BEGIN
+                SELECT RAISE(ABORT, 'A filed return is never deleted; unlock it with a reason');
+            END;
+
+            CREATE TRIGGER gst_return_only_unlocked BEFORE UPDATE ON gst_return
+            WHEN NOT (OLD.status = 'FILED' AND NEW.status = 'UNLOCKED'
+                      AND NEW.snapshot = OLD.snapshot AND NEW.snapshot_sha256 = OLD.snapshot_sha256
+                      AND NEW.return_type = OLD.return_type AND NEW.period_from = OLD.period_from
+                      AND NEW.period_to = OLD.period_to AND NEW.filed_on = OLD.filed_on
+                      AND NEW.acknowledgement IS OLD.acknowledgement)
+            BEGIN
+                SELECT RAISE(ABORT, 'A filed return is never edited; only unlocked, with a reason');
+            END;
+
+            """ + gstPeriodLock("sales", "'GSTR1', 'GSTR3B', 'CMP08', 'GSTR9'")
+            + gstPeriodLock("purchase", "'GSTR3B', 'CMP08', 'GSTR9'"));
+
+    private static String gstPeriodLock(String side, String returnTypes) {
+        return """
+            CREATE TRIGGER %1$s_document_gst_period_lock_update
+            BEFORE UPDATE OF status ON %1$s_document
+            WHEN NEW.status <> OLD.status AND EXISTS (SELECT 1 FROM gst_return
+                WHERE status = 'FILED' AND return_type IN (%2$s)
+                  AND NEW.document_date BETWEEN period_from AND period_to)
+            BEGIN
+                SELECT RAISE(ABORT, 'The GST return for this document''s period is filed; correct it with a note');
+            END;
+
+            CREATE TRIGGER %1$s_document_gst_period_lock_insert
+            BEFORE INSERT ON %1$s_document
+            WHEN NEW.status <> 'DRAFT' AND EXISTS (SELECT 1 FROM gst_return
+                WHERE status = 'FILED' AND return_type IN (%2$s)
+                  AND NEW.document_date BETWEEN period_from AND period_to)
+            BEGIN
+                SELECT RAISE(ABORT, 'The GST return for this document''s period is filed; correct it with a note');
+            END;
+
+            """.formatted(side, returnTypes);
+    }
 
     /** @param unused the withholding this side never bears: TDS on sales, TCS on purchases */
     private static String withholdingOnDocuments(String side, String unused) {

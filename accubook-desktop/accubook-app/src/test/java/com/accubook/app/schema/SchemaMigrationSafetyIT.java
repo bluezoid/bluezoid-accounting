@@ -57,8 +57,8 @@ class SchemaMigrationSafetyIT {
             // Migration 2 (P5) posting invariants; 3 (P6) account governance;
             // 4 (P7a) parties; 5 (P7b) inventory; 6 (P7c) documents; 7 (P7d) settlement;
             // 8 (P7e) quotations and orders; 9 (P8) valuation; 10 (P9a) GST registration;
-            // 11 (P9b) GST on documents; 12 (P9c) TDS and TCS.
-            assertThat(result.toVersion()).isEqualTo(12);
+            // 11 (P9b) GST on documents; 12 (P9c) TDS and TCS; 13 (P9d) GST returns.
+            assertThat(result.toVersion()).isEqualTo(13);
             assertThat(tables(database)).contains(
                     "company_info", "fiscal_year", "ledger_group", "ledger",
                     "voucher_type", "number_counter", "voucher", "voucher_entry", "audit_log",
