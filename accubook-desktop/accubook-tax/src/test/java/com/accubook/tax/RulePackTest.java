@@ -39,6 +39,9 @@ class RulePackTest {
             206C(1H)|2020-10-01|2025-03-31|0.1|1|ANNUAL_EXCESS||5000000|Sale of goods
             [composition-special-states]
             38|2019-04-01|
+            [uqc]
+            NOS|Numbers
+            KGS|Kilograms
             """;
 
     @Test
@@ -113,5 +116,17 @@ class RulePackTest {
     void specialStateKnown() {
         assertThatThrownBy(() -> RulePack.parse(SAMPLE.replace("38|2019-04-01|\n", "55|2019-04-01|\n")))
                 .hasMessageContaining("not in [states]");
+    }
+
+    @Test
+    @DisplayName("UQC codes are three capital letters, each listed once")
+    void uqc() {
+        RulePack pack = RulePack.parse(SAMPLE);
+        assertThat(pack.uqc("KGS")).hasValueSatisfying(u -> assertThat(u.description()).isEqualTo("Kilograms"));
+        assertThat(pack.uqc("kg")).isEmpty();
+        assertThatThrownBy(() -> RulePack.parse(SAMPLE.replace("KGS|Kilograms", "NOS|Numbers again")))
+                .hasMessageContaining("UQC appears twice");
+        assertThatThrownBy(() -> RulePack.parse(SAMPLE.replace("KGS|Kilograms", "Kg|Kilograms")))
+                .hasMessageContaining("three capital letters");
     }
 }

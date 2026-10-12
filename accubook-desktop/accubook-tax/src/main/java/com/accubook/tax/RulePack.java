@@ -35,6 +35,8 @@ import java.util.Optional;
  * ...
  * [composition-special-states]
  * 12|2019-04-01|
+ * [uqc]
+ * NOS|Numbers
  * </pre>
  * Fields are separated by {@code |}; an empty "to" date means still in force.
  * Parsing is strict: anything unexpected is refused with its line number, because
@@ -42,7 +44,12 @@ import java.util.Optional;
  */
 public record RulePack(String version, LocalDate issued, String status, List<String> sources,
                        List<StateCode> states, List<GstSlabs> gstSlabs, List<Threshold> thresholds,
-                       List<WithholdingSection> withholding, List<DatedState> compositionSpecialStates) {
+                       List<WithholdingSection> withholding, List<DatedState> compositionSpecialStates,
+                       List<Uqc> uqcs) {
+
+    /** A GST unit quantity code, as the returns' HSN summary must use (P9-16). */
+    public record Uqc(String code, String description) {
+    }
 
     /** A state code in a dated list, e.g. the states with the lower composition limit. */
     public record DatedState(String code, LocalDate from, LocalDate to) {
@@ -60,6 +67,11 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
         thresholds = List.copyOf(thresholds);
         withholding = List.copyOf(withholding);
         compositionSpecialStates = List.copyOf(compositionSpecialStates);
+        uqcs = List.copyOf(uqcs);
+    }
+
+    public Optional<Uqc> uqc(String code) {
+        return code == null ? Optional.empty() : uqcs.stream().filter(u -> u.code().equals(code)).findFirst();
     }
 
     // ================================================================ queries
@@ -121,6 +133,7 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
         List<Threshold> thresholds = new ArrayList<>();
         List<WithholdingSection> withholding = new ArrayList<>();
         List<DatedState> special = new ArrayList<>();
+        List<Uqc> uqcs = new ArrayList<>();
         String section = null;
 
         String[] lines = text.split("\n", -1);
@@ -134,7 +147,7 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
                 if (line.startsWith("[") && line.endsWith("]")) {
                     section = line.substring(1, line.length() - 1);
                     if (!List.of("states", "gst-slabs", "thresholds", "tds", "tcs",
-                            "composition-special-states").contains(section)) {
+                            "composition-special-states", "uqc").contains(section)) {
                         throw new RulePackException("unknown section [" + section + "]");
                     }
                     continue;
@@ -172,6 +185,13 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
                         thresholds.add(new Threshold(required(f[0], "key"), date(f[1]), optionalDate(f[2]),
                                 new BigDecimal(f[3])));
                     }
+                    case "uqc" -> {
+                        expect(f, 2);
+                        if (!f[0].matches("[A-Z]{3}")) {
+                            throw new RulePackException("a UQC is three capital letters");
+                        }
+                        uqcs.add(new Uqc(f[0], required(f[1], "description")));
+                    }
                     case "composition-special-states" -> {
                         expect(f, 3);
                         special.add(new DatedState(required(f[0], "state"), date(f[1]), optionalDate(f[2])));
@@ -198,7 +218,8 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
             throw new RulePackException("A rule pack needs a numeric version, e.g. 2025.10.1");
         }
         RulePack pack = new RulePack(version, date(required(header.get("issued"), "issued")),
-                required(header.get("status"), "status"), sources, states, slabs, thresholds, withholding, special);
+                required(header.get("status"), "status"), sources, states, slabs, thresholds, withholding, special,
+                uqcs);
         pack.requireNoOverlaps();
         return pack;
     }
@@ -214,6 +235,9 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
                 .map(w -> new Object[]{w.kind() + " " + w.section(), w.from(), w.to()}).toList());
         if (states.stream().map(StateCode::code).distinct().count() != states.size()) {
             throw new RulePackException("A state code appears twice");
+        }
+        if (uqcs.stream().map(Uqc::code).distinct().count() != uqcs.size()) {
+            throw new RulePackException("A UQC appears twice");
         }
         checkOverlaps("composition special state", compositionSpecialStates.stream()
                 .map(s -> new Object[]{s.code(), s.from(), s.to()}).toList());
