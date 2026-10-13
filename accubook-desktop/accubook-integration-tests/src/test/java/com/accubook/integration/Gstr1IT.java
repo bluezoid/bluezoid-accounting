@@ -24,6 +24,7 @@ import com.accubook.returns.Gstr1;
 import com.accubook.returns.ReturnException;
 import com.accubook.returns.ReturnPeriod;
 import com.accubook.sales.SalesInvoicing;
+import com.accubook.tax.CompositionCategory;
 import com.accubook.tax.GstRegistration;
 import com.accubook.tax.GstRegistrations;
 import com.accubook.tax.RulePack;
@@ -275,7 +276,7 @@ class Gstr1IT {
     @DisplayName("GSTR-1 is a regular taxpayer's return; a quarter is one period")
     void regularOnly() {
         new GstRegistrations(transactions, Clock.systemUTC()).register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH,
-                "27", LocalDate.of(2026, 7, 1), RULES);
+                "27", LocalDate.of(2026, 7, 1), RULES, CompositionCategory.TRADER);
 
         assertThatThrownBy(() -> returns.gstr1(ReturnPeriod.quarter(2026, 7)))
                 .hasMessageContaining("filed by a regular taxpayer");

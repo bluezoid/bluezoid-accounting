@@ -22,6 +22,7 @@ import com.accubook.module.ModuleTransactions;
 import com.accubook.purchase.PurchaseBilling;
 import com.accubook.sales.SalesInvoicing;
 import com.accubook.tax.GstComponent;
+import com.accubook.tax.CompositionCategory;
 import com.accubook.tax.GstRegistration;
 import com.accubook.tax.GstRegistrations;
 import com.accubook.tax.LineTax;
@@ -119,7 +120,8 @@ class GstDocumentsIT {
     }
 
     private void compositionScheme() {
-        registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27", APRIL_1, RULES);
+        registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27", APRIL_1, RULES,
+                CompositionCategory.TRADER);
     }
 
     private Party party(String name, PartyRole role, String gstin, String state) {
@@ -372,7 +374,8 @@ class GstDocumentsIT {
         Document draft = sales.createDraft(request);
         assertThat(draft.tax()).isEqualByComparingTo("180");
 
-        registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27", JUNE_1, RULES);
+        registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27", JUNE_1, RULES,
+                CompositionCategory.TRADER);
 
         assertThatThrownBy(() -> sales.post(draft.id())).hasMessageContaining("Save it again");
         Document resaved = sales.updateDraft(draft.id(), DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(),
@@ -409,11 +412,12 @@ class GstDocumentsIT {
         LocalDate nextYear = LocalDate.of(2027, 4, 1);
 
         assertThatThrownBy(() -> registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27",
-                nextYear, RULES)).hasMessageContaining("above the limit of 15000000");
+                nextYear, RULES, CompositionCategory.TRADER)).hasMessageContaining("above the limit of 15000000");
 
         sales.post(sales.createDraft(DraftRequest.note(DocumentKind.CREDIT_NOTE, customer.id(), JUNE_10, inv.id(),
                 List.of(LineRequest.text("Training", d("1"), d("1")).withTax(TaxCategory.EXEMPT, null, null)))).id());
-        registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27", nextYear, RULES);
+        registrations.register(GstRegistration.Scheme.COMPOSITION, COMPANY_MH, "27", nextYear, RULES,
+                CompositionCategory.TRADER);
         assertThat(registrations.on(nextYear).orElseThrow().scheme()).isEqualTo(GstRegistration.Scheme.COMPOSITION);
     }
 

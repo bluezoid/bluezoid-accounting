@@ -1,6 +1,7 @@
 package com.accubook.app.tax;
 
 import com.accubook.app.company.CompanyService;
+import com.accubook.tax.CompositionCategory;
 import com.accubook.tax.GstRegistration;
 import com.accubook.tax.GstRegistrations;
 import com.accubook.tax.RulePack;
@@ -51,7 +52,8 @@ class GstRegistrationsIT {
     void history() {
         registrations.register(GstRegistration.Scheme.UNREGISTERED, null, "27", LocalDate.of(2026, 4, 1), rules);
         registrations.register(GstRegistration.Scheme.REGULAR, "27aapfu0939f1zv", "27", LocalDate.of(2026, 7, 1), rules);
-        registrations.register(GstRegistration.Scheme.COMPOSITION, GSTIN, "27", LocalDate.of(2027, 4, 1), rules);
+        registrations.register(GstRegistration.Scheme.COMPOSITION, GSTIN, "27", LocalDate.of(2027, 4, 1), rules,
+                CompositionCategory.TRADER);
 
         assertThat(registrations.on(LocalDate.of(2026, 3, 31))).isEmpty();
         assertThat(registrations.on(LocalDate.of(2026, 6, 30)).orElseThrow().scheme())
@@ -78,11 +80,27 @@ class GstRegistrationsIT {
     void forwardOnly() {
         registrations.register(GstRegistration.Scheme.REGULAR, GSTIN, "27", LocalDate.of(2026, 7, 1), rules);
         assertThatThrownBy(() -> registrations.register(GstRegistration.Scheme.COMPOSITION, GSTIN, "27",
-                LocalDate.of(2026, 6, 1), rules)).isInstanceOf(RulePackException.class).hasMessageContaining("after");
+                LocalDate.of(2026, 6, 1), rules,
+                        CompositionCategory.TRADER))
+                .isInstanceOf(RulePackException.class).hasMessageContaining("after");
         assertThatThrownBy(() -> service.openCompanyTransactions().inTransaction(c -> {
             try (Statement s = c.createStatement()) {
                 return s.executeUpdate("UPDATE gst_registration SET scheme = 'COMPOSITION'");
             }
         })).hasMessageContaining("never edited");
+    }
+
+    @Test
+    @DisplayName("P9-20: composition needs its category, which only composition has")
+    void compositionCategory() {
+        assertThatThrownBy(() -> registrations.register(GstRegistration.Scheme.COMPOSITION, GSTIN, "27",
+                LocalDate.of(2026, 4, 1), rules)).hasMessageContaining("Choose the composition category");
+        assertThatThrownBy(() -> registrations.register(GstRegistration.Scheme.REGULAR, GSTIN, "27",
+                LocalDate.of(2026, 4, 1), rules, CompositionCategory.TRADER))
+                .hasMessageContaining("Only a composition registration");
+        registrations.register(GstRegistration.Scheme.COMPOSITION, GSTIN, "27", LocalDate.of(2026, 4, 1), rules,
+                CompositionCategory.RESTAURANT);
+        assertThat(registrations.on(LocalDate.of(2026, 5, 1)).orElseThrow().compositionCategory())
+                .isEqualTo(CompositionCategory.RESTAURANT);
     }
 }

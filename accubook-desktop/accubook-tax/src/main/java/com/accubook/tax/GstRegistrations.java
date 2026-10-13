@@ -46,7 +46,18 @@ public final class GstRegistrations {
      */
     public GstRegistration register(GstRegistration.Scheme scheme, String gstin, String stateCode,
                                     LocalDate effectiveFrom, RulePack rules) {
+        return register(scheme, gstin, stateCode, effectiveFrom, rules, null);
+    }
+
+    /** @param category required for composition, which it decides the rate of (P9-20); refused otherwise */
+    public GstRegistration register(GstRegistration.Scheme scheme, String gstin, String stateCode,
+                                    LocalDate effectiveFrom, RulePack rules, CompositionCategory category) {
         Objects.requireNonNull(scheme, "scheme");
+        if ((scheme == GstRegistration.Scheme.COMPOSITION) != (category != null)) {
+            throw new RulePackException(scheme == GstRegistration.Scheme.COMPOSITION
+                    ? "Choose the composition category - trader, manufacturer, restaurant or services - which "
+                    + "decides its rate" : "Only a composition registration has a composition category");
+        }
         Objects.requireNonNull(effectiveFrom, "effectiveFrom");
         if (stateCode == null || rules.state(stateCode).isEmpty()) {
             throw new RulePackException("\"" + stateCode + "\" is not a state code in rule pack " + rules.version());
@@ -75,14 +86,17 @@ public final class GstRegistrations {
             throw new RulePackException("A new registration must take effect after " + latest.get().effectiveFrom()
                     + "; past documents keep the registration they were taxed under");
         }
+        if (category != null) {
+            rules.compositionRate(category, effectiveFrom);
+        }
         GstRegistration registration = new GstRegistration(Ids.newIdString(), effectiveFrom, scheme, normalised,
-                stateCode, rules.version());
+                stateCode, rules.version(), category);
         String storedGstin = normalised;
         try {
             transactions.inTransaction(connection -> {
                 try (PreparedStatement ps = connection.prepareStatement("INSERT INTO gst_registration (id, "
-                        + "effective_from, scheme, gstin, state_code, rule_pack_version, created_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                        + "effective_from, scheme, gstin, state_code, rule_pack_version, created_at, "
+                        + "composition_category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
                     ps.setString(1, registration.id());
                     ps.setString(2, effectiveFrom.toString());
                     ps.setString(3, scheme.name());
@@ -90,6 +104,7 @@ public final class GstRegistrations {
                     ps.setString(5, stateCode);
                     ps.setString(6, rules.version());
                     ps.setLong(7, clock.millis());
+                    ps.setString(8, category == null ? null : category.name());
                     ps.executeUpdate();
                 }
                 return null;
@@ -143,7 +158,8 @@ public final class GstRegistrations {
     /** The registration in force on {@code date}, read inside the caller's transaction. */
     public static Optional<GstRegistration> on(Connection connection, LocalDate date) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement("SELECT id, effective_from, scheme, gstin, "
-                + "state_code, rule_pack_version FROM gst_registration WHERE effective_from <= ? "
+                + "state_code, rule_pack_version, composition_category FROM gst_registration "
+                + "WHERE effective_from <= ? "
                 + "ORDER BY effective_from DESC LIMIT 1")) {
             ps.setString(1, date.toString());
             try (ResultSet rows = ps.executeQuery()) {
@@ -153,9 +169,10 @@ public final class GstRegistrations {
     }
 
     private static GstRegistration map(ResultSet rows) throws SQLException {
+        String category = rows.getString(7);
         return new GstRegistration(rows.getString(1), LocalDate.parse(rows.getString(2)),
                 GstRegistration.Scheme.valueOf(rows.getString(3)), rows.getString(4), rows.getString(5),
-                rows.getString(6));
+                rows.getString(6), category == null ? null : CompositionCategory.valueOf(category));
     }
 
     /** Every registration, oldest first. */
@@ -164,7 +181,8 @@ public final class GstRegistrations {
             return transactions.read(connection -> {
                 List<GstRegistration> result = new ArrayList<>();
                 try (PreparedStatement ps = connection.prepareStatement("SELECT id, effective_from, scheme, gstin, "
-                        + "state_code, rule_pack_version FROM gst_registration ORDER BY effective_from");
+                        + "state_code, rule_pack_version, composition_category FROM gst_registration "
+                        + "ORDER BY effective_from");
                      ResultSet rows = ps.executeQuery()) {
                     while (rows.next()) {
                         result.add(map(rows));
