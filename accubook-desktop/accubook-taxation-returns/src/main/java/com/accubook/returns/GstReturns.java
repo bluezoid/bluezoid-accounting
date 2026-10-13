@@ -192,6 +192,24 @@ public final class GstReturns {
         });
     }
 
+    /** GSTR-9 tables 4-9 and 17 for a financial year (P9-22). */
+    public Gstr9 gstr9(ReturnPeriod year) {
+        requireReadable();
+        try {
+            return transactions.read(connection -> Gstr9Builder.build(connection, year, rules.get()));
+        } catch (SQLException e) {
+            throw new ReturnException("Could not build GSTR-9: " + e.getMessage(), e);
+        }
+    }
+
+    /** As {@link #markGstr1Filed}, for GSTR-9. Locks the whole year's documents (P9-14). */
+    public FiledReturn markGstr9Filed(ReturnPeriod year, LocalDate filedOn, String acknowledgement) {
+        return markFiled("GSTR9", "GSTR-9", year, filedOn, acknowledgement, (connection, pack) -> {
+            Gstr9 r = Gstr9Builder.build(connection, year, pack);
+            return new Built(r.gstin(), r.issues(), Gstr9Json.write(r), null);
+        });
+    }
+
     /** As {@link #markGstr1Filed}, for GSTR-3B. Locks the period's sales and purchases (P9-14). */
     public FiledReturn markGstr3bFiled(ReturnPeriod period, LocalDate filedOn, String acknowledgement) {
         return markFiled("GSTR3B", "GSTR-3B", period, filedOn, acknowledgement, (connection, pack) -> {

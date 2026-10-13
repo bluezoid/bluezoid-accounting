@@ -34,7 +34,7 @@ final class Cmp08Builder {
     }
 
     static Cmp08 build(Connection connection, ReturnPeriod period, RulePack rules) throws SQLException {
-        if (!period.from().plusMonths(3).minusDays(1).equals(period.to())) {
+        if (!period.isQuarter()) {
             throw new ReturnException("CMP-08 is a quarterly statement");
         }
         Registration reg = requireCompositionThroughout(connection, period);

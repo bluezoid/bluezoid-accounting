@@ -29,6 +29,11 @@ public record Gstr3b(ReturnPeriod period, String gstin, String rulePackVersion, 
     public record Tax(BigDecimal taxable, BigDecimal igst, BigDecimal cgst, BigDecimal sgst, BigDecimal cess) {
         public static final Tax NIL = new Tax(z(), z(), z(), z(), z());
 
+        /** For GSTR-9 and other sums across returns. */
+        public Tax add(Tax o) {
+            return plus(o);
+        }
+
         Tax min(Tax o) {
             return new Tax(taxable.min(o.taxable), igst.min(o.igst), cgst.min(o.cgst), sgst.min(o.sgst),
                     cess.min(o.cess));
