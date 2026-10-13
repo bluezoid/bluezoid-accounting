@@ -1,6 +1,6 @@
 format=accubook-rulepack/1
-version=2025.10.3
-issued=2026-10-12
+version=2025.10.4
+issued=2026-10-13
 # UNVERIFIED: compiled from public secondary sources for development. A
 # chartered accountant must verify every rate, threshold and date before any
 # release (OPEN_DECISIONS V-1). Do not treat as legal advice.
@@ -12,6 +12,7 @@ source=https://cleartax.in/s/gst-compensation-cess
 source=https://www.taxaj.com/learn/?p=843
 source=https://www.gstgyaan.com/notification-no-14-2019-central-tax-dated-07-03-2019-turnover-limit-for-composition-levy
 source=https://lexplosion.in/?p=35900
+source=https://cbic-gst.gov.in/gst-goods-services-rates.html
 
 # GST state codes. UNION_TERRITORY = UTGST applies (no legislature).
 # Delhi, Puducherry and Jammu and Kashmir have legislatures: SGST, so STATE.
@@ -157,3 +158,14 @@ TUB|Tubes
 UGS|US gallons
 UNT|Units
 YDS|Yards
+
+# Composition rates by category (CGST + SGST together), rule 7 CGST Rules as
+# amended: traders 1% of taxable supplies only (Notification 50/2018-CT);
+# manufacturers 1% and restaurants 5% of turnover in the state; s.10(2A)
+# service providers 6% (Notification 2/2019-CT(Rate)). UNVERIFIED (V-1).
+# category|from|to|rate %|base
+[composition-rates]
+TRADER|2019-04-01||1|TAXABLE
+MANUFACTURER|2019-04-01||1|TURNOVER
+RESTAURANT|2019-04-01||5|TURNOVER
+SERVICES|2019-04-01||6|TURNOVER

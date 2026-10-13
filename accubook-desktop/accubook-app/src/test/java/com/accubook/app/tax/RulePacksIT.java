@@ -75,7 +75,7 @@ class RulePacksIT {
         packs.installBundled();
 
         assertThat(packs.installed()).singleElement().satisfies(i -> assertThat(i.source()).isEqualTo("BUNDLED"));
-        assertThat(packs.active().version()).isEqualTo("2025.10.3");
+        assertThat(packs.active().version()).isEqualTo("2025.10.4");
     }
 
     @Test
@@ -125,7 +125,7 @@ class RulePacksIT {
     @DisplayName("CompanyService installs the bundled pack at start and serves its rules")
     void throughCompanyService() throws Exception {
         try (CompanyService service = CompanyService.start(dir.resolve("installation"))) {
-            assertThat(service.rules().version()).isEqualTo("2025.10.3");
+            assertThat(service.rules().version()).isEqualTo("2025.10.4");
             assertThat(service.installedRulePacks()).hasSize(1);
         }
     }

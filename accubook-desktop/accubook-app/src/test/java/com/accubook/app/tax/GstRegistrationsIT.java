@@ -57,7 +57,7 @@ class GstRegistrationsIT {
         assertThat(registrations.on(LocalDate.of(2026, 6, 30)).orElseThrow().scheme())
                 .isEqualTo(GstRegistration.Scheme.UNREGISTERED);
         assertThat(registrations.on(LocalDate.of(2026, 7, 1)).orElseThrow().gstin()).isEqualTo(GSTIN);
-        assertThat(registrations.on(LocalDate.of(2027, 4, 1)).orElseThrow().rulePackVersion()).isEqualTo("2025.10.3");
+        assertThat(registrations.on(LocalDate.of(2027, 4, 1)).orElseThrow().rulePackVersion()).isEqualTo("2025.10.4");
     }
 
     @Test

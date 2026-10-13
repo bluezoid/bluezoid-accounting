@@ -76,4 +76,14 @@ class BundledRulePackTest {
         assertThat(BUNDLED.pack().uqc("NOS")).isPresent();
         assertThat(BUNDLED.pack().uqc("OTH")).isPresent();
     }
+
+    @Test
+    @DisplayName("composition rates: trader 1% of taxable supplies, restaurant 5% and services 6% of turnover")
+    void compositionRates() {
+        java.time.LocalDate on = java.time.LocalDate.of(2026, 4, 1);
+        RulePack pack = BUNDLED.pack();
+        assertThat(pack.compositionRate(CompositionCategory.TRADER, on).base()).isEqualTo(CompositionRate.Base.TAXABLE);
+        assertThat(pack.compositionRate(CompositionCategory.RESTAURANT, on).rate()).isEqualByComparingTo("5");
+        assertThat(pack.compositionRate(CompositionCategory.SERVICES, on).rate()).isEqualByComparingTo("6");
+    }
 }
