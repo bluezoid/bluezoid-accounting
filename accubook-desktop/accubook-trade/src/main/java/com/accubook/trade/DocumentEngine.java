@@ -621,7 +621,7 @@ public final class DocumentEngine {
         if (hsnSac != null && !hsnSac.matches("\\d{4}|\\d{6}|\\d{8}")) {
             throw new TradeException(where + ": \"" + hsnSac + "\" is not an HSN or SAC code (4, 6 or 8 digits)");
         }
-        if (!gst.taxed()) {
+        if (!gst.taxed() && !gst.recordsCategory()) {
             if (line.taxCategory() == TaxCategory.TAXABLE) {
                 throw new TradeException(where + " cannot carry GST: " + gst.untaxedReason() + ".");
             }
@@ -664,8 +664,9 @@ public final class DocumentEngine {
         } catch (RulePackException e) {
             throw new TradeException(where + ": " + e.getMessage(), e);
         }
-        List<LineTax> taxes = GstCalculator.lineTax(amount, category, gstRate, cessRate, gst.basis().supplyType(),
-                gst.placeKind());
+        // A composition dealer's sale records what it supplied, for CMP-08 (P9-20), and charges no tax.
+        List<LineTax> taxes = gst.taxed() ? GstCalculator.lineTax(amount, category, gstRate, cessRate,
+                gst.basis().supplyType(), gst.placeKind()) : List.of();
         return new LineValues(line.itemId(), description, line.quantity(), line.rate(), line.discountBp(), amount,
                 warehouse, line.orderLineId(), category, gstRate, cessRate, hsnSac, taxes, uqc);
     }
@@ -1025,8 +1026,14 @@ public final class DocumentEngine {
     }
 
     /** What the GST position of a draft is: everything but its lines. */
-    private record GstContext(GstBasis basis, boolean taxed, StateCode.Kind placeKind, LocalDate rateDate,
-                              RulePack rules, String untaxedReason) {
+    /**
+     * @param recordsCategory a composition dealer's bill of supply charges no GST
+     *                        but still says whether each supply is taxable or
+     *                        exempt: a trader's composition tax is on taxable
+     *                        supplies only (P9-20)
+     */
+    private record GstContext(GstBasis basis, boolean taxed, boolean recordsCategory, StateCode.Kind placeKind,
+                              LocalDate rateDate, RulePack rules, String untaxedReason) {
     }
 
     /**
@@ -1085,7 +1092,9 @@ public final class DocumentEngine {
                     new TradeException("Place of supply " + basis.placeOfSupply() + " is not in rule pack "
                             + pack.version()));
             String untaxed = untaxedReason(basis, party.name);
-            return new GstContext(basis, untaxed == null, placeKind, rateDate, pack, untaxed);
+            boolean compositionSale = side == DocumentKind.Side.SALES
+                    && basis.scheme() == GstRegistration.Scheme.COMPOSITION;
+            return new GstContext(basis, untaxed == null, compositionSale, placeKind, rateDate, pack, untaxed);
         } catch (RulePackException e) {
             throw new TradeException(e.getMessage(), e);
         }

@@ -379,7 +379,8 @@ class GstDocumentsIT {
 
         assertThatThrownBy(() -> sales.post(draft.id())).hasMessageContaining("Save it again");
         Document resaved = sales.updateDraft(draft.id(), DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(),
-                JUNE_10, List.of(LineRequest.text("Service", d("1"), d("1000")))));
+                JUNE_10, List.of(LineRequest.text("Service", d("1"), d("1000"))
+                        .withTax(TaxCategory.TAXABLE, d("18"), null))));
         Document posted = sales.post(resaved.id());
         assertThat(posted.tax()).as("now a bill of supply").isEqualByComparingTo("0");
         assertThat(posted.total()).isEqualByComparingTo("1000");
@@ -428,9 +429,10 @@ class GstDocumentsIT {
         compositionScheme();
         Party customer = party("Big Buyer", PartyRole.CUSTOMER, null, null);
         sales.post(sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), MAY_10,
-                List.of(LineRequest.text("Goods", d("1"), d("15000000"))))).id());   // exactly the limit
+                List.of(LineRequest.text("Goods", d("1"), d("15000000"))
+                        .withTax(TaxCategory.TAXABLE, d("18"), null)))).id());   // exactly the limit
         Document crossing = sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), JUNE_10,
-                List.of(LineRequest.text("Goods", d("1"), d("1000")))));
+                List.of(LineRequest.text("Goods", d("1"), d("1000")).withTax(TaxCategory.TAXABLE, d("18"), null))));
 
         assertThatThrownBy(() -> sales.post(crossing.id())).hasMessageContaining("above the composition limit");
 
@@ -460,5 +462,23 @@ class GstDocumentsIT {
                 List.of(LineRequest.text("Installation", d("1"), d("500")).withTax(TaxCategory.TAXABLE, d("18"), null)
                         .withHsn("99871")))))
                 .hasMessageContaining("not an HSN or SAC code");
+    }
+
+    @Test
+    @DisplayName("P9-20: a composition dealer's bill of supply records each line's category, and charges no tax")
+    void compositionRecordsCategory() {
+        compositionScheme();
+        Party customer = party("Cash Customer", PartyRole.CUSTOMER, null, null);
+
+        Document bill = sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), MAY_10, List.of(
+                LineRequest.text("Lamps", d("1"), d("1000")).withTax(TaxCategory.TAXABLE, d("18"), null),
+                LineRequest.text("Books", d("1"), d("500")).withTax(TaxCategory.EXEMPT, null, null))));
+
+        assertThat(bill.lines()).extracting(l -> l.taxCategory()).containsExactly(TaxCategory.TAXABLE,
+                TaxCategory.EXEMPT);
+        assertThat(bill.tax()).isEqualByComparingTo("0");
+        assertThat(bill.total()).isEqualByComparingTo("1500");
+        assertThatThrownBy(() -> sales.createDraft(DraftRequest.of(DocumentKind.SALES_INVOICE, customer.id(), MAY_10,
+                List.of(LineRequest.text("Lamps", d("1"), d("1000")))))).hasMessageContaining("needs its GST category");
     }
 }
