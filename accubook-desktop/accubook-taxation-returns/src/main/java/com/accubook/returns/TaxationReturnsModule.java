@@ -40,10 +40,10 @@ public final class TaxationReturnsModule implements FeatureModule {
         return Set.of("gst_return", "gstr2b_import", "gstr2b_document");
     }
 
-    /** Migration 13 created gst_return; 14 the GSTR-2B imports. */
+    /** Migration 13 created gst_return; 14 the GSTR-2B imports; 15 its voucher link. */
     @Override
     public int requiredSchemaVersion() {
-        return 14;
+        return 15;
     }
 
     @Override

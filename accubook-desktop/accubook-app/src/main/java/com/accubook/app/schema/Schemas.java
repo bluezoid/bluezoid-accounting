@@ -88,7 +88,7 @@ public final class Schemas {
                 COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION,
                 COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
                 COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS,
-                COMPANY_V14_GSTR2B);
+                COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION);
     }
 
     /**
@@ -1736,6 +1736,41 @@ public final class Schemas {
                 SELECT RAISE(ABORT, 'A GSTR-2B document is kept as imported');
             END;
             """);
+
+    /**
+     * Phase 9d-4: composition.
+     *
+     * <ul>
+     *   <li>A composition registration records its category, which decides its
+     *       rate and base (P9-20). Rows written before have none; a new one must.</li>
+     *   <li>A filed return may post a voucher - CMP-08 books its composition tax
+     *       (P9-21) - and an unlocked one records the reversal.</li>
+     *   <li>Composition Tax (Indirect Expenses) and Composition Tax Payable
+     *       (Duties &amp; Taxes) ledgers.</li>
+     * </ul>
+     */
+    private static final Migration COMPANY_V15_COMPOSITION = new Migration(15, "composition tax", """
+            ALTER TABLE gst_registration ADD COLUMN composition_category TEXT
+                CHECK (composition_category IS NULL OR (scheme = 'COMPOSITION'
+                       AND composition_category IN ('TRADER', 'MANUFACTURER', 'RESTAURANT', 'SERVICES')));
+
+            ALTER TABLE gst_return ADD COLUMN voucher_id TEXT REFERENCES voucher (id);
+            ALTER TABLE gst_return ADD COLUMN reversal_voucher_id TEXT REFERENCES voucher (id);
+
+            DROP TRIGGER gst_return_only_unlocked;
+            CREATE TRIGGER gst_return_only_unlocked BEFORE UPDATE ON gst_return
+            WHEN NOT (OLD.status = 'FILED' AND NEW.status = 'UNLOCKED'
+                      AND NEW.snapshot = OLD.snapshot AND NEW.snapshot_sha256 = OLD.snapshot_sha256
+                      AND NEW.return_type = OLD.return_type AND NEW.period_from = OLD.period_from
+                      AND NEW.period_to = OLD.period_to AND NEW.filed_on = OLD.filed_on
+                      AND NEW.acknowledgement IS OLD.acknowledgement AND NEW.voucher_id IS OLD.voucher_id
+                      AND (OLD.voucher_id IS NULL) = (NEW.reversal_voucher_id IS NULL))
+            BEGIN
+                SELECT RAISE(ABORT, 'A filed return is never edited; only unlocked, with a reason');
+            END;
+
+            """ + seedSystemLedger("COMPOSITION_TAX", "Composition Tax", "INDIRECT_EXPENSES")
+            + seedSystemLedger("COMPOSITION_TAX_PAYABLE", "Composition Tax Payable", "DUTIES_AND_TAXES"));
 
     private static String gstPeriodLock(String side, String returnTypes) {
         return """

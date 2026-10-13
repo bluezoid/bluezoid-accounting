@@ -58,8 +58,8 @@ class SchemaMigrationSafetyIT {
             // 4 (P7a) parties; 5 (P7b) inventory; 6 (P7c) documents; 7 (P7d) settlement;
             // 8 (P7e) quotations and orders; 9 (P8) valuation; 10 (P9a) GST registration;
             // 11 (P9b) GST on documents; 12 (P9c) TDS and TCS; 13 (P9d) GST returns;
-            // 14 (P9d-3) GSTR-2B imports.
-            assertThat(result.toVersion()).isEqualTo(14);
+            // 14 (P9d-3) GSTR-2B imports; 15 (P9d-4) composition tax.
+            assertThat(result.toVersion()).isEqualTo(15);
             assertThat(tables(database)).contains(
                     "company_info", "fiscal_year", "ledger_group", "ledger",
                     "voucher_type", "number_counter", "voucher", "voucher_entry", "audit_log",
