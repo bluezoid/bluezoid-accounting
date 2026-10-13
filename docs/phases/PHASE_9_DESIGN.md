@@ -203,7 +203,7 @@ build without it records tax identically; it cannot generate returns.
 
 ## 9. P9d-3 detailed design — GSTR-2B import and reconciliation
 
-**Status:** DESIGN — awaiting P9-17…P9-19.
+**Status:** APPROVED 2026-10-13 (P9-17…P9-19 as recommended).
 
 ### 9.1 What it does
 - **Import** the GSTR-2B JSON downloaded from the portal for a month: its B2B

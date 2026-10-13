@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-19 (2026-10-13).
 
 **Still open:** B-2 · B-5 · I-3, I-6…I-18 · N-2…N-9.
 
@@ -331,6 +331,17 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 >   alone (R-18).
 > - **P9-13:** one TDS Payable and one TDS Receivable ledger; deductions tagged
 >   with their section.
+
+## P9-17…P9-19 · GSTR-2B reconciliation — ✅ **APPROVED 2026-10-13**
+
+> As recommended in `PHASE_9_DESIGN.md` §9.3.
+>
+> - **P9-17:** ₹1 tolerance per figure (value, taxable, each tax).
+> - **P9-18:** invoice numbers compared normalised (case, spaces, `/ - .`,
+>   leading zeros ignored); each match records exact or normalised.
+> - **P9-19:** GSTR-3B claims only credit in GSTR-2B (s.16(2)(aa)): per bill the
+>   lower of books and 2B, for bills matched in this or an earlier month's 2B;
+>   the rest deferred. 3B is not fileable until that month's 2B is imported.
 
 ## P9-9, P9-14…P9-16 · Composition limit, filed returns — ✅ **APPROVED 2026-10-12**
 
