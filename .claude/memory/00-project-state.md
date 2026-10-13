@@ -70,11 +70,17 @@ taxable line blocks filing). Pack 2025.10.3 (UQC list). Migration 13 (unit/line
 uqc, gst_return). New Maven/JPMS module `accubook-taxation-returns`
 (com.accubook.returns: GstReturns, Gstr1Builder, Gstr3bBuilder, *Json, Json,
 ReturnPeriod). R-19/20/21 reference defects.
-**NEXT: P9d-3** GSTR-2B import + reconciliation, P9d-4 CMP-08 + GSTR-9,
-P9d-5 TDS challans/26Q/16A; then P9e e-invoice/e-way payloads.
+**P9d DONE (2026-10-13).** P9-17..24. Migrations 14 (gstr2b_import/document),
+15 (registration composition_category, gst_return voucher links, composition
+ledgers), 16 (tds_challan(+_entry), TDS_INTEREST ledger). Pack 2025.10.4
+(composition rates). returns module: JsonReader, Gstr2bFile/Reconciler, Cmp08*,
+Gstr9*, TdsInterest, TdsDeposits (26Q/16A as RPU data), uses posting core.
+register(COMPOSITION) now needs a CompositionCategory. Tan API in tax module.
+R-22..R-24. **NEXT: P9e** e-invoice / e-way bill payloads (never fake IRN),
+then Phase 9 exit + ROADMAP update; then Phase 10 banking.
 NOTE: roadmap has NO phase for screens - biggest remaining item (told user).
 
-Suite: **760 passing, 0 failing** with UI on Xvfb (751 + 9 UI skipped default).
+Suite: **793 passing, 0 failing** with UI on Xvfb (784 + 9 UI skipped default).
 Worktree trick to verify a committed intermediate state: `git worktree add
 --detach <scratch> HEAD` then `mvn -o -q clean verify` there, then remove.
 UI: `xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true`.

@@ -54,3 +54,4 @@ expense claims, attendance, leave, multi-currency, all master CRUD, entire UI.
 Read a test before porting it — the year-end test never calls the route it
 appears to test.
 - R-18 (P9c): reference TDS on annual-threshold crossing deducts only on the crossing bill; earlier below-threshold bills of the year never bear TDS. Also never rounds TDS.
+- R-22: 2B money via Number() floats. R-23 (suspected): reads idt/iamt names from 2B (2B uses dt/igst). R-24: CMP-08 composition tax on all turnover for traders; rate undated.
