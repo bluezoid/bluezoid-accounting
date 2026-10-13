@@ -1154,7 +1154,8 @@ public final class DocumentEngine {
             try (ResultSet rows = ps.executeQuery()) {
                 if (rows.next()) {
                     throw new TradeException("Cannot " + action + " a " + label(doc.kind) + " dated " + doc.date
-                            + ": " + rows.getString(1).replace("GSTR", "GSTR-") + " for " + rows.getString(2) + " to "
+                            + ": " + rows.getString(1).replaceFirst("^(GSTR|CMP)(\\d)", "$1-$2") + " for "
+                            + rows.getString(2) + " to "
                             + rows.getString(3) + " is filed. Correct it with a "
                             + label(doc.kind.isNote() ? doc.kind : doc.kind.note()) + " in an open period.");
                 }
