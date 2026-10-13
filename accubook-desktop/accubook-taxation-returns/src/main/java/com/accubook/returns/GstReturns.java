@@ -1,5 +1,10 @@
 package com.accubook.returns;
 
+import com.accubook.accounting.posting.EntryLine;
+import com.accubook.accounting.posting.PostedVoucher;
+import com.accubook.accounting.posting.PostingRequest;
+import com.accubook.accounting.posting.ReversalRequest;
+import com.accubook.accounting.posting.TransactionalPosting;
 import com.accubook.module.EntitlementGuard;
 import com.accubook.module.ModuleTransactions;
 import com.accubook.platform.id.Ids;
@@ -36,6 +41,7 @@ public final class GstReturns {
     private final EntitlementGuard entitlement;
     private final Supplier<RulePack> rules;
     private final Clock clock;
+    private final TransactionalPosting posting;
 
     public GstReturns(ModuleTransactions transactions, EntitlementGuard entitlement, Supplier<RulePack> rules,
                       Clock clock) {
@@ -43,6 +49,7 @@ public final class GstReturns {
         this.entitlement = Objects.requireNonNull(entitlement, "entitlement");
         this.rules = Objects.requireNonNull(rules, "rules");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.posting = new TransactionalPosting(entitlement, clock);
     }
 
     /** GSTR-1 as the books stand, with the issues that block or qualify filing it. */
@@ -159,7 +166,29 @@ public final class GstReturns {
     public FiledReturn markGstr1Filed(ReturnPeriod period, LocalDate filedOn, String acknowledgement) {
         return markFiled("GSTR1", "GSTR-1", period, filedOn, acknowledgement, (connection, pack) -> {
             Gstr1 r = Gstr1Builder.build(connection, period, pack);
-            return new Built(r.gstin(), r.issues(), Gstr1Json.write(r));
+            return new Built(r.gstin(), r.issues(), Gstr1Json.write(r), null);
+        });
+    }
+
+    /** A composition dealer's CMP-08 for a quarter, as the books stand. */
+    public Cmp08 cmp08(ReturnPeriod quarter) {
+        requireReadable();
+        try {
+            return transactions.read(connection -> Cmp08Builder.build(connection, quarter, rules.get()));
+        } catch (SQLException e) {
+            throw new ReturnException("Could not build CMP-08: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Record CMP-08 as filed: snapshot, lock the quarter (P9-14), and book the
+     * composition tax - Dr Composition Tax / Cr Composition Tax Payable on the
+     * quarter's last day (P9-21). Its payment is an ordinary payment voucher.
+     */
+    public FiledReturn markCmp08Filed(ReturnPeriod quarter, LocalDate filedOn, String acknowledgement) {
+        return markFiled("CMP08", "CMP-08", quarter, filedOn, acknowledgement, (connection, pack) -> {
+            Cmp08 r = Cmp08Builder.build(connection, quarter, pack);
+            return new Built(r.gstin(), r.issues(), Cmp08Json.write(r), r.compositionTax());
         });
     }
 
@@ -167,11 +196,12 @@ public final class GstReturns {
     public FiledReturn markGstr3bFiled(ReturnPeriod period, LocalDate filedOn, String acknowledgement) {
         return markFiled("GSTR3B", "GSTR-3B", period, filedOn, acknowledgement, (connection, pack) -> {
             Gstr3b r = Gstr3bBuilder.build(connection, period, pack);
-            return new Built(r.gstin(), r.issues(), Gstr3bJson.write(r));
+            return new Built(r.gstin(), r.issues(), Gstr3bJson.write(r), null);
         });
     }
 
-    private record Built(String gstin, List<Gstr1.Issue> issues, String json) {
+    /** @param compositionTax to book on filing (CMP-08), or null */
+    private record Built(String gstin, List<Gstr1.Issue> issues, String json, BigDecimal compositionTax) {
     }
 
     @FunctionalInterface
@@ -197,9 +227,11 @@ public final class GstReturns {
                             .map(i -> i.document() + " - " + i.message()).toList());
                 }
                 String json = built.json();
+                String voucherId = built.compositionTax() == null || built.compositionTax().signum() <= 0 ? null
+                        : bookCompositionTax(connection, id, period, built.compositionTax());
                 try (PreparedStatement ps = connection.prepareStatement("INSERT INTO gst_return (id, return_type, "
                         + "period_from, period_to, gstin, filed_on, acknowledgement, snapshot, snapshot_sha256, "
-                        + "rule_pack_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                        + "rule_pack_version, created_at, voucher_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                     int i = 1;
                     ps.setString(i++, id);
                     ps.setString(i++, type);
@@ -212,7 +244,8 @@ public final class GstReturns {
                     ps.setString(i++, json);
                     ps.setString(i++, sha256(json));
                     ps.setString(i++, pack.version());
-                    ps.setLong(i, clock.millis());
+                    ps.setLong(i++, clock.millis());
+                    ps.setString(i, voucherId);
                     ps.executeUpdate();
                 }
                 return null;
@@ -237,14 +270,31 @@ public final class GstReturns {
         }
         try {
             transactions.inTransaction(connection -> {
-                try (PreparedStatement ps = connection.prepareStatement("UPDATE gst_return SET status = 'UNLOCKED', "
-                        + "unlocked_on = ?, unlock_reason = ? WHERE id = ? AND status = 'FILED'")) {
-                    ps.setString(1, Objects.requireNonNull(on, "on").toString());
-                    ps.setString(2, reason.strip());
-                    ps.setString(3, returnId);
-                    if (ps.executeUpdate() == 0) {
-                        throw new ReturnException("No filed return " + returnId);
+                String voucherId;
+                String type;
+                try (PreparedStatement ps = connection.prepareStatement(
+                        "SELECT voucher_id, return_type FROM gst_return WHERE id = ? AND status = 'FILED'")) {
+                    ps.setString(1, returnId);
+                    try (ResultSet rows = ps.executeQuery()) {
+                        if (!rows.next()) {
+                            throw new ReturnException("No filed return " + returnId);
+                        }
+                        voucherId = rows.getString(1);
+                        type = rows.getString(2);
                     }
+                }
+                // What filing booked is reversed, dated the unlock; filing again books it afresh.
+                String reversalId = voucherId == null ? null : posting.reverseWithin(connection, voucherId,
+                        new ReversalRequest(TaxationReturnsModule.ID, fiscalYear(connection, Objects.requireNonNull(on,
+                                "on")), on, "Unlocked " + type + ": " + reason.strip(), null,
+                                "gst-return-unlock:" + returnId)).voucherId();
+                try (PreparedStatement ps = connection.prepareStatement("UPDATE gst_return SET status = 'UNLOCKED', "
+                        + "unlocked_on = ?, unlock_reason = ?, reversal_voucher_id = ? WHERE id = ?")) {
+                    ps.setString(1, on.toString());
+                    ps.setString(2, reason.strip());
+                    ps.setString(3, reversalId);
+                    ps.setString(4, returnId);
+                    ps.executeUpdate();
                 }
                 return null;
             });
@@ -295,6 +345,54 @@ public final class GstReturns {
             });
         } catch (SQLException e) {
             throw new ReturnException("Could not read the return: " + e.getMessage(), e);
+        }
+    }
+
+    /** P9-21: Dr Composition Tax / Cr Composition Tax Payable, on the quarter's last day. */
+    private String bookCompositionTax(java.sql.Connection connection, String returnId, ReturnPeriod quarter,
+                                      BigDecimal tax) throws SQLException {
+        LocalDate on = quarter.to();
+        String narration = "Composition tax, CMP-08 for " + quarter.from() + " to " + quarter.to();
+        PostedVoucher voucher = posting.postWithin(connection, new PostingRequest(TaxationReturnsModule.ID,
+                fiscalYear(connection, on), single(connection, "SELECT id FROM voucher_type WHERE code = 'JOURNAL'",
+                null, "The journal voucher type is missing"), on, null, narration, List.of(
+                EntryLine.debit(single(connection, "SELECT id FROM ledger WHERE system_code = 'COMPOSITION_TAX'", null,
+                        "The Composition Tax ledger is missing"), tax),
+                EntryLine.credit(single(connection, "SELECT id FROM ledger WHERE system_code = "
+                        + "'COMPOSITION_TAX_PAYABLE'", null, "The Composition Tax Payable ledger is missing"), tax)),
+                "cmp08:" + returnId));
+        return voucher.voucherId();
+    }
+
+    private static String fiscalYear(java.sql.Connection connection, LocalDate date) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT id, is_closed FROM fiscal_year "
+                + "WHERE start_date <= ? AND end_date >= ?")) {
+            ps.setString(1, date.toString());
+            ps.setString(2, date.toString());
+            try (ResultSet rows = ps.executeQuery()) {
+                if (!rows.next()) {
+                    throw new ReturnException("No fiscal year covers " + date + ". Create that year first.");
+                }
+                if (rows.getInt(2) == 1) {
+                    throw new ReturnException("The fiscal year containing " + date + " is closed");
+                }
+                return rows.getString(1);
+            }
+        }
+    }
+
+    private static String single(java.sql.Connection connection, String sql, String parameter, String missing)
+            throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            if (parameter != null) {
+                ps.setString(1, parameter);
+            }
+            try (ResultSet rows = ps.executeQuery()) {
+                if (!rows.next()) {
+                    throw new ReturnException(missing);
+                }
+                return rows.getString(1);
+            }
         }
     }
 

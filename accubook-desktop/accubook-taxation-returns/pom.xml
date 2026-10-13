@@ -9,6 +9,8 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-tax</artifactId></dependency>
+    <!-- The kernel posting core: CMP-08 books composition tax (P9-21). -->
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-accounting</artifactId></dependency>
     <dependency>
       <groupId>com.accubook</groupId><artifactId>accubook-app</artifactId>
       <scope>test</scope>
