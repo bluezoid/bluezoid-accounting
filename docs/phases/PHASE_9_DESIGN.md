@@ -238,7 +238,7 @@ build without it records tax identically; it cannot generate returns.
 
 ## 10. P9d-4 and P9d-5 detailed design — CMP-08, GSTR-9, TDS deposits and returns
 
-**Status:** DESIGN — awaiting P9-20…P9-24.
+**Status:** APPROVED 2026-10-13 (P9-20…P9-24 as recommended).
 
 ### 10.1 CMP-08 (composition, quarterly)
 Outward turnover of the quarter, the composition tax on it, and reverse-charge

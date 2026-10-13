@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-19 (2026-10-13).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13).
 
 **Still open:** B-2 · B-5 · I-3, I-6…I-18 · N-2…N-9.
 
@@ -331,6 +331,22 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 >   alone (R-18).
 > - **P9-13:** one TDS Payable and one TDS Receivable ledger; deductions tagged
 >   with their section.
+
+## P9-20…P9-24 · CMP-08, GSTR-9, TDS deposits — ✅ **APPROVED 2026-10-13**
+
+> As recommended in `PHASE_9_DESIGN.md` §10.5.
+>
+> - **P9-20:** the registration records the composition category; the rule
+>   pack carries each category's dated rate and base (trader 1% on taxable
+>   supplies; manufacturer 1%, restaurant 5%, services 6% on turnover).
+> - **P9-21:** marking CMP-08 filed posts Dr Composition Tax / Cr Composition
+>   Tax Payable on the quarter's last day.
+> - **P9-22:** GSTR-9 tables 4–9 and 17 from filed returns with books
+>   differences; 10–16 and 18–19 left to the user.
+> - **P9-23:** s.201(1A) interest on late TDS deposits computed and shown; the
+>   deposit is not refused.
+> - **P9-24:** 26Q produced as structured data for Protean's RPU, not the FVU
+>   file.
 
 ## P9-17…P9-19 · GSTR-2B reconciliation — ✅ **APPROVED 2026-10-13**
 
