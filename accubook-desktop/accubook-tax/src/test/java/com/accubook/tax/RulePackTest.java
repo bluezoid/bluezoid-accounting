@@ -42,6 +42,9 @@ class RulePackTest {
             [uqc]
             NOS|Numbers
             KGS|Kilograms
+            [composition-rates]
+            TRADER|2019-04-01||1|TAXABLE
+            RESTAURANT|2019-04-01||5|TURNOVER
             """;
 
     @Test
@@ -128,5 +131,19 @@ class RulePackTest {
                 .hasMessageContaining("UQC appears twice");
         assertThatThrownBy(() -> RulePack.parse(SAMPLE.replace("KGS|Kilograms", "Kg|Kilograms")))
                 .hasMessageContaining("three capital letters");
+    }
+
+    @Test
+    @DisplayName("P9-20: a composition category's dated rate and base; a missing one is refused")
+    void compositionRates() {
+        RulePack pack = RulePack.parse(SAMPLE);
+        LocalDate on = LocalDate.of(2026, 4, 1);
+        assertThat(pack.compositionRate(CompositionCategory.TRADER, on).base())
+                .isEqualTo(CompositionRate.Base.TAXABLE);
+        assertThat(pack.compositionRate(CompositionCategory.RESTAURANT, on).rate()).isEqualByComparingTo("5");
+        assertThatThrownBy(() -> pack.compositionRate(CompositionCategory.SERVICES, on))
+                .hasMessageContaining("no composition rate for SERVICES");
+        assertThatThrownBy(() -> RulePack.parse(SAMPLE.replace("RESTAURANT|2019-04-01||5", "TRADER|2020-04-01||5")))
+                .hasMessageContaining("in force at once");
     }
 }
