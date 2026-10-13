@@ -1,7 +1,7 @@
 # Phase 9 Report — Indian Taxation
 
-**Status:** IN PROGRESS — **P9a ✅** · **P9b ✅** · **P9c ✅** · P9d in progress (**P9d-1 ✅ P9d-2 ✅**) · P9e not started
-**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-16 2026-10-12)
+**Status:** IN PROGRESS — **P9a ✅** · **P9b ✅** · **P9c ✅** · **P9d ✅** · P9e not started
+**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-16 2026-10-12; P9-17…P9-24 2026-10-13)
 
 ---
 
@@ -155,4 +155,54 @@ blocks.
 - ITC is as per books; GSTR-2B matching is P9d-3. No blocked credit (s.17(5)),
   so 4(B) and 4(D) are nil. No exports/SEZ, advances, amendments (B2BA etc.).
 - Services report UQC `NA` with zero quantity (assumed portal convention, V-1).
+
+---
+
+## P9d-3, P9d-4, P9d-5 — 2B reconciliation, CMP-08, GSTR-9, TDS deposits ✅ (2026-10-13)
+
+**Tests:** **793 passing · 0 failing · 0 skipped** with UI on Xvfb (784 + 9 UI)
+**Before:** 760 (+33)
+**Decisions:** P9-17 ₹1 tolerance; P9-18 normalised invoice numbers; P9-19
+3B credit only as in 2B, blocked without it; P9-20 composition category and
+dated rates; P9-21 composition tax booked on filing; P9-22 GSTR-9 tables
+4–9, 17; P9-23 s.201(1A) interest computed and flagged; P9-24 26Q as RPU data.
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| Strict JSON reader with exact decimals (R-22) | `JsonReader` |
+| Migration 14: GSTR-2B imports kept as imported, superseded not deleted | `Schemas` |
+| GSTR-2B import (B2B + CDNR, either field naming), reconciliation: matched / mismatched with differences / only in 2B / only in books / probable match; earlier months' matches not re-offered | `Gstr2bFile`, `Gstr2bReconciler` |
+| GSTR-3B 4(A)(5) from 2B: lower of books and 2B, notes reverse the larger, rest deferred; not fileable without the month's 2B | `Gstr3bBuilder` |
+| Rule pack 2025.10.4: composition rates by category (trader 1% of taxable supplies, R-24) | `rulepack-2025.10.4.txt` |
+| Migration 15: registration's composition category, return voucher links, composition ledgers | `Schemas`, `GstRegistrations` |
+| Composition bills of supply record each line's category (no tax) | `DocumentEngine` |
+| CMP-08: turnover, base, composition tax per dated rate, RCM; filing books the tax, unlocking reverses it | `Cmp08Builder`, `GstReturns` |
+| GSTR-9 tables 4–9, 17 from the year's monthly returns as the books stand, filed 3Bs and 2Bs, with differences; a financial year is a return period; filing locks the year | `Gstr9Builder` |
+| TAN; migration 16: TDS/TCS challans linked to deductions, each once; deposited deductions cannot be cancelled | `Tan`, `Schemas` |
+| Deposits posted (TDS/TCS Payable, interest and fees, bank); due dates and s.201(1A) interest; 26Q/27EQ data for the RPU with blocking and warning issues; Form 16A data | `TdsInterest`, `TdsDeposits` |
+
+### Findings
+- **R-22** 2B money parsed as floats. **R-23** *(suspected)* the reference reads
+  GSTR-1 field names from a 2B file. **R-24** composition tax on all turnover
+  for traders, and an undated rate.
+
+### Verification
+- `Gstr2bIT` (5), `Cmp08IT` (4), `Gstr9IT` (2), `TdsDepositsIT` (5), unit tests
+  for the 2B file, JSON reader, set-off and interest.
+- Mutations caught: no tolerance, claiming books not the lower, re-claiming
+  earlier matches, exact-number matching, among others.
+- Intermediate commit `7f8a883` verified green in a clean worktree.
+- `./build.sh --plan basic --add-on taxation-returns`: launched, pack 2025.10.4.
+
+### Limits
+- GSTR-2B: imports, ISD, amendments (B2BA, CDNRA) not read; an invoice's credit
+  marked "N" in 2B is not claimed. Probable matches are offered, not applied.
+- GSTR-9 and CMP-08 are kept in AccuBook's own JSON shape (filed online); the
+  RPU section codes for 26Q are not mapped (the resolved section is given).
+- TDS: no refund/adjustment when a note follows a deposit; no 24Q (salary, P15);
+  interest counting in calendar months is to be confirmed by a CA (V-1).
+- A Basic customer without the add-on cannot record TDS deposits in the app
+  except as an ordinary payment voucher.
 
