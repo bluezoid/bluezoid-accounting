@@ -36,7 +36,7 @@ Java 17 (AWS Corretto) · JavaFX · SQLite · Maven · JPMS.
 | Phase docs | `docs/phases/` |
 | Daily logs | `docs/logs/YYYY-MM-DD.md` |
 | Reference analysis | `docs/analysis/`, `docs/reference/` |
-| Memory | `.claude/memory/` — read `00-project-state.md` first. **Local only: `.claude/` is gitignored and never pushed.** Anything that must be shared or survive a fresh clone goes in `docs/`. |
+| Memory | `.claude/memory/` — read `00-project-state.md` first. **Tracked in git since 2026-10-12** (the user un-ignored it): commit memory updates like any change, and never put secrets or customer data in it. Project records still belong in `docs/`. |
 
 ## Build & test
 

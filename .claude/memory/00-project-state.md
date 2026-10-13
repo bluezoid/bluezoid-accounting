@@ -63,10 +63,18 @@ GENERATED settle_e4 = total - tds + tcs (outstanding/allocations use it),
 settlement tds_e4/tds_section. DraftRequest.withWithholding("194C");
 SettlementRequest.withTds(amount, section). SettlementEngine has a
 Supplier<RulePack> ctor too.
-**NEXT: P9d** returns (taxation-returns add-on: GSTR-1, 3B, 2B recon, 9,
-CMP-08 + portal JSON; TDS challans/26Q/16A) - ask P9-9 first. Then P9e.
+**P9d-1/2 DONE (2026-10-12).** P9-9 (composition invoice over limit refused),
+P9-14 (filed return = JSON snapshot + sha256, locks period via triggers; unlock
+with reason), P9-15 (portal JSON only), P9-16 (UQC warn -> OTH, missing HSN on
+taxable line blocks filing). Pack 2025.10.3 (UQC list). Migration 13 (unit/line
+uqc, gst_return). New Maven/JPMS module `accubook-taxation-returns`
+(com.accubook.returns: GstReturns, Gstr1Builder, Gstr3bBuilder, *Json, Json,
+ReturnPeriod). R-19/20/21 reference defects.
+**NEXT: P9d-3** GSTR-2B import + reconciliation, P9d-4 CMP-08 + GSTR-9,
+P9d-5 TDS challans/26Q/16A; then P9e e-invoice/e-way payloads.
+NOTE: roadmap has NO phase for screens - biggest remaining item (told user).
 
-Suite: **735 passing, 0 failing** with UI on Xvfb (726 + 9 UI skipped default).
+Suite: **760 passing, 0 failing** with UI on Xvfb (751 + 9 UI skipped default).
 Worktree trick to verify a committed intermediate state: `git worktree add
 --detach <scratch> HEAD` then `mvn -o -q clean verify` there, then remove.
 UI: `xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true`.

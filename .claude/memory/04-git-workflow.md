@@ -32,10 +32,11 @@ lets any change be located and reviewed individually.
 `git diff --cached --stat` before each commit, and list the commits made (hash +
 subject) in the end-of-work report.
 
-## `.claude/` is local-only
-The whole `.claude/` directory is gitignored and never pushed. Memory updates
-are therefore not committed. Anything that must survive a fresh clone goes in
-`docs/`.
+## `.claude/` is tracked (since 2026-10-12)
+The user removed `.claude/` from `.gitignore` and committed it (199e198,
+2026-10-12), and pushes it. So memory and CLAUDE.md changes are committed like
+any other change: small, own commit, no co-author trailer. Never put secrets
+or customer data in memory files - they are published with the repo.
 
 ## History note
 The repo was re-initialised on 2026-10-09 (one commit, "Initialized into new
