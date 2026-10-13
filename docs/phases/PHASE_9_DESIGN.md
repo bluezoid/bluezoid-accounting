@@ -199,3 +199,38 @@ build without it records tax identically; it cannot generate returns.
 | **P9-15** | Filing channel | **Generate the portal's offline-upload JSON** (schema version recorded), to be uploaded by the user or their CA. No direct filing through a GSP API - that needs a commercial GSP licence; reconsider with P13. |
 | **P9-16** | Unit codes and HSN in returns | Units gain a **GST UQC** from a list carried in the rule pack; a unit without one reports as `OTH` with a warning. A **missing HSN/SAC on a taxable line is a blocking issue**: the return can be previewed but not marked filed. |
 
+---
+
+## 9. P9d-3 detailed design — GSTR-2B import and reconciliation
+
+**Status:** DESIGN — awaiting P9-17…P9-19.
+
+### 9.1 What it does
+- **Import** the GSTR-2B JSON downloaded from the portal for a month: its B2B
+  invoices and CDNR notes, with supplier GSTIN, number, date, value, place of
+  supply, reverse charge, ITC availability and tax by component. The file and
+  its SHA-256 are kept; re-importing a month supersedes the earlier import but
+  keeps it.
+- **Reconcile** against posted purchase bills and debit notes from registered
+  vendors, keyed by vendor GSTIN + the supplier's document number
+  (`supplier_document_no`): **matched**, **mismatched** (each differing figure
+  named), **only in 2B** (a bill not entered - ITC not yet claimable), **only in
+  books** (the supplier has not reported it - ITC at risk). Same GSTIN with a
+  different number but equal value is offered as a probable match.
+- Money parsed as exact decimals, never floating point.
+
+### 9.2 Findings in the reference
+| ID | Finding |
+|---|---|
+| **R-22** | GSTR-2B amounts parsed with `Number()` - floating-point money. |
+| **R-23** *(suspected)* | Reads `idt` and `iamt/camt/samt/csamt`; the published GSTR-2B format uses `dt` and `igst/cgst/sgst/cess`, which would read every tax as 0 and mark every invoice mismatched. To confirm against a real 2B file. |
+| — | Credit notes (CDNR) are not reconciled; results are not kept. |
+
+### 9.3 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P9-17** | Tolerance when amounts differ | **₹1 per figure** (value, taxable, each tax) counts as matched, as the reference does - suppliers' round-off differs; anything more is a mismatch with the difference shown. |
+| **P9-18** | How invoice numbers are compared | **Normalised:** case, spaces, `/`, `-`, `.` and leading zeros ignored ("INV/0012" = "inv-12"). Each match records whether it was exact or normalised. |
+| **P9-19** | What GSTR-3B claims as input credit once 2B is imported | **The law since 2022 (s.16(2)(aa)): only credit appearing in 2B.** GSTR-3B 4(A)(5) claims, per bill, the lower of books and 2B for bills matched in this or an earlier month's 2B; bills not yet in 2B are listed as deferred. Without a 2B imported for the month, 3B is a **blocking issue** ("import GSTR-2B first") - the portal publishes it before 3B is due. |
+
