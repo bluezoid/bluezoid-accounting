@@ -234,3 +234,40 @@ build without it records tax identically; it cannot generate returns.
 | **P9-18** | How invoice numbers are compared | **Normalised:** case, spaces, `/`, `-`, `.` and leading zeros ignored ("INV/0012" = "inv-12"). Each match records whether it was exact or normalised. |
 | **P9-19** | What GSTR-3B claims as input credit once 2B is imported | **The law since 2022 (s.16(2)(aa)): only credit appearing in 2B.** GSTR-3B 4(A)(5) claims, per bill, the lower of books and 2B for bills matched in this or an earlier month's 2B; bills not yet in 2B are listed as deferred. Without a 2B imported for the month, 3B is a **blocking issue** ("import GSTR-2B first") - the portal publishes it before 3B is due. |
 
+---
+
+## 10. P9d-4 and P9d-5 detailed design — CMP-08, GSTR-9, TDS deposits and returns
+
+**Status:** DESIGN — awaiting P9-20…P9-24.
+
+### 10.1 CMP-08 (composition, quarterly)
+Outward turnover of the quarter, the composition tax on it, and reverse-charge
+inward tax (paid at normal rates). Filing locks the quarter for both sides
+(P9-14).
+
+### 10.2 GSTR-9 (annual)
+Built from the year's **filed** GSTR-1 and GSTR-3B snapshots and the books,
+with the difference between them shown where they disagree.
+
+### 10.3 TDS deposits and quarterly returns
+- **Challan** (ITNS 281): date, BSR code, challan serial, section, tax,
+  interest, fee; posted Dr TDS Payable (and interest expense) / Cr bank; linked
+  to the deductions it deposits.
+- **26Q** quarterly data per deductee and challan; **Form 16A** data per
+  deductee per quarter.
+
+### 10.4 Finding
+| ID | Finding |
+|---|---|
+| **R-24** | CMP-08 charges composition tax on all turnover, exempt included; since Notification 50/2018-CT a **trader's** 1% is on taxable supplies only. Rates are a constant, not dated. |
+
+### 10.5 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P9-20** | Composition rate and base | The registration records the **category** (trader, manufacturer, restaurant, s.10(2A) services); the **rule pack** carries each category's dated rate and base (trader 1% on taxable supplies; manufacturer 1% and restaurant 5% on turnover; services 6% on turnover). |
+| **P9-21** | Booking composition tax | When CMP-08 is marked filed, **post** Dr Composition Tax (Indirect Expenses) / Cr Composition Tax Payable (Duties & Taxes), dated the quarter's last day; the payment is an ordinary payment voucher. Ledgers seeded in every plan. |
+| **P9-22** | GSTR-9 scope | Tables **4–9** (outward, input credit, tax paid) and **17** (HSN), from the filed monthly returns with books differences shown. Tables 10–16 and 18–19 (amendments, demands, refunds, late fees) left for the user to complete. GSTR-9 is optional up to ₹2 crore turnover. |
+| **P9-23** | TDS deposited late | **Compute s.201(1A) interest** (1.5% a month or part, from deduction to deposit) per deduction, show it on the challan as due, and flag it in 26Q. Not refused: the deposit is still made. |
+| **P9-24** | 26Q output | **Structured data for Protean's RPU** (the free utility that produces the FVU file), not the FVU text file itself: that format is validated only by Protean's FVU, which we cannot run here. |
+
