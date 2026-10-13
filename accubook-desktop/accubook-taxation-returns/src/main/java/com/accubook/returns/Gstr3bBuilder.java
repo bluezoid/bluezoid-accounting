@@ -75,11 +75,41 @@ final class Gstr3bBuilder {
             }
         }
 
+        Gstr3b.Tax itcDeferred = Gstr3b.Tax.NIL;
+        java.util.Optional<Gstr2bReconciliation> recon = Gstr2bReconciler.build(connection, period);
+        if (recon.isEmpty()) {
+            issues.add(new Gstr1.Issue(true, period.fp(), "Import GSTR-2B for this month first: input credit is "
+                    + "claimed only as it appears there (s.16(2)(aa)). The credit shown is as per books."));
+        } else {
+            itcOther = Gstr3b.Tax.NIL;
+            for (Gstr2bReconciliation.Row row : recon.get().rows()) {
+                if (row.reverseCharge()) {
+                    continue;
+                }
+                Gstr3b.Tax books = tax(row.books());
+                switch (row.status()) {
+                    case MATCHED, MISMATCHED -> {
+                        if (!row.itcAvailable()) {
+                            continue;
+                        }
+                        Gstr3b.Tax twoB = tax(row.gstr2b());
+                        // A bill: the lower of the two. A supplier's credit note: the larger reversal.
+                        itcOther = "INV".equals(row.type()) ? itcOther.plus(books.min(twoB))
+                                : itcOther.plus(books.max(twoB).negate());
+                    }
+                    case ONLY_IN_BOOKS -> itcDeferred = "INV".equals(row.type()) ? itcDeferred.plus(books)
+                            : itcDeferred.plus(books.negate());
+                    default -> {
+                    }
+                }
+            }
+        }
+
         List<Gstr3b.UnregisteredInterState> interUnreg = new ArrayList<>();
         unregistered.forEach((pos, a) -> interUnreg.add(new Gstr3b.UnregisteredInterState(pos, a[0], a[1])));
         Gstr3b.Tax itcRcm = rcmInward;
         return new Gstr3b(period, gstin, rules.version(), outward, nilExempt, nonGst, rcmInward, interUnreg, itcRcm,
-                itcOther, new Gstr3b.Inward(inward[0], inward[1], inward[2], inward[3]),
+                itcOther, itcDeferred, new Gstr3b.Inward(inward[0], inward[1], inward[2], inward[3]),
                 setOff(outward, rcmInward, itcRcm.plus(itcOther)), issues);
     }
 
@@ -122,6 +152,10 @@ final class Gstr3bBuilder {
             }
         }
         return rows;
+    }
+
+    private static Gstr3b.Tax tax(Gstr2bReconciliation.Figures f) {
+        return new Gstr3b.Tax(f.taxable(), f.igst(), f.cgst(), f.sgst(), f.cess());
     }
 
     /** Rule 88A, as a guide: see {@link Gstr3b.SetOff}. */

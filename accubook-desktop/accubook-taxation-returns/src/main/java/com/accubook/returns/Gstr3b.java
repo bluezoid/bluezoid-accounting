@@ -6,15 +6,19 @@ import java.util.List;
 /**
  * A GSTR-3B for one period, from the figures documents stored when posted.
  *
- * <p>Input tax credit is <b>as per books</b>: purchase bills from registered
- * vendors and reverse-charge bills. Since 2022 the credit claimed must also
- * appear in GSTR-2B; that comparison is the reconciliation (P9d-3), not this
- * return. Blocked credit (s.17(5)) is not identified, so table 4(B) is nil.
+ * <p>Input tax credit on bills (table 4(A)(5)) is <b>only what GSTR-2B shows</b>
+ * (s.16(2)(aa), P9-19): per bill matched in the month's 2B, the lower of books
+ * and 2B; bills the supplier has not reported are deferred. Without the
+ * month's 2B imported, the credit shown is as per books and the return cannot
+ * be filed. Reverse-charge credit comes from the books. Blocked credit
+ * (s.17(5)) is not identified, so table 4(B) is nil.
+ *
+ * @param itcDeferred credit on bills in the books but not yet in any 2B
  */
 public record Gstr3b(ReturnPeriod period, String gstin, String rulePackVersion, Tax outward,
                      BigDecimal nilExemptOutward, BigDecimal nonGstOutward, Tax reverseChargeInward,
                      List<UnregisteredInterState> interStateUnregistered, Tax itcReverseCharge, Tax itcOther,
-                     Inward exemptInward, SetOff setOff, List<Gstr1.Issue> issues) {
+                     Tax itcDeferred, Inward exemptInward, SetOff setOff, List<Gstr1.Issue> issues) {
 
     public Gstr3b {
         interStateUnregistered = List.copyOf(interStateUnregistered);
@@ -24,6 +28,16 @@ public record Gstr3b(ReturnPeriod period, String gstin, String rulePackVersion, 
     /** Taxable value and tax by component. {@code sgst} includes UTGST. */
     public record Tax(BigDecimal taxable, BigDecimal igst, BigDecimal cgst, BigDecimal sgst, BigDecimal cess) {
         public static final Tax NIL = new Tax(z(), z(), z(), z(), z());
+
+        Tax min(Tax o) {
+            return new Tax(taxable.min(o.taxable), igst.min(o.igst), cgst.min(o.cgst), sgst.min(o.sgst),
+                    cess.min(o.cess));
+        }
+
+        Tax max(Tax o) {
+            return new Tax(taxable.max(o.taxable), igst.max(o.igst), cgst.max(o.cgst), sgst.max(o.sgst),
+                    cess.max(o.cess));
+        }
 
         Tax plus(Tax o) {
             return new Tax(taxable.add(o.taxable), igst.add(o.igst), cgst.add(o.cgst), sgst.add(o.sgst),

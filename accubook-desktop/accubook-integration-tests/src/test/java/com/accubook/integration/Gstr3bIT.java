@@ -97,7 +97,7 @@ class Gstr3bIT {
     }
 
     @Test
-    @DisplayName("outward, inter-state to unregistered, RCM inward, ITC, exempt inward and the suggested cash")
+    @DisplayName("outward, inter-state to unregistered, RCM inward, ITC as per books before 2B, exempt inward, cash")
     void month() {
         Party walkIn = party("Cash Customer", PartyRole.CUSTOMER, null, null);
         Party mysore = party("Mysore Buyer", PartyRole.CUSTOMER, null, "29");
@@ -147,6 +147,7 @@ class Gstr3bIT {
         purchases.post(purchases.createDraft(DraftRequest.of(DocumentKind.PURCHASE_BILL, vendor.id(), MAY_10,
                 List.of(line("Supplies", "500", TaxCategory.TAXABLE, "18")))).id());
 
+        returns.importGstr2b("{\"data\":{\"gstin\":\"" + COMPANY_MH + "\",\"rtnprd\":\"052026\",\"docdata\":{}}}");
         returns.markGstr3bFiled(MAY, LocalDate.of(2026, 6, 20), null);
 
         assertThatThrownBy(() -> purchases.post(purchases.createDraft(DraftRequest.of(DocumentKind.PURCHASE_BILL,
