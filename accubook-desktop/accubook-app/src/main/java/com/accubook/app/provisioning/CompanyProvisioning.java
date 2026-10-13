@@ -91,7 +91,9 @@ public final class CompanyProvisioning {
             new LedgerSeed("TCS_PAYABLE", "TCS Payable", CODE_DUTIES_AND_TAXES),
             // P9-21: composition tax booked when CMP-08 is filed.
             new LedgerSeed("COMPOSITION_TAX", "Composition Tax", "INDIRECT_EXPENSES"),
-            new LedgerSeed("COMPOSITION_TAX_PAYABLE", "Composition Tax Payable", CODE_DUTIES_AND_TAXES)),
+            new LedgerSeed("COMPOSITION_TAX_PAYABLE", "Composition Tax Payable", CODE_DUTIES_AND_TAXES),
+            // P9-23: interest and fees on late TDS deposits.
+            new LedgerSeed("TDS_INTEREST", "Interest and Fees on TDS", "INDIRECT_EXPENSES")),
             // P9-7: GST computation is kernel (B-7), so every plan has its ledgers.
             Schemas.GST_LEDGERS.stream().map(l -> new LedgerSeed(l[0], l[1], CODE_DUTIES_AND_TAXES))).toList();
 

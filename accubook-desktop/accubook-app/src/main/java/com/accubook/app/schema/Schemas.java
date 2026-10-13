@@ -88,7 +88,7 @@ public final class Schemas {
                 COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION,
                 COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
                 COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS,
-                COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION);
+                COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION, COMPANY_V16_TDS_CHALLANS);
     }
 
     /**
@@ -1771,6 +1771,73 @@ public final class Schemas {
 
             """ + seedSystemLedger("COMPOSITION_TAX", "Composition Tax", "INDIRECT_EXPENSES")
             + seedSystemLedger("COMPOSITION_TAX_PAYABLE", "Composition Tax Payable", "DUTIES_AND_TAXES"));
+
+    /**
+     * Phase 9d-5: TDS and TCS deposits ({@code taxation-returns}).
+     *
+     * <p>A challan (ITNS 281) deposits the TDS or TCS of one section, and names
+     * the deductions it deposits; each deduction is deposited once. Interest
+     * paid for a late deposit (s.201(1A), P9-23) and the fee are recorded beside
+     * the tax. A challan is posted on entry and never edited.
+     */
+    private static final Migration COMPANY_V16_TDS_CHALLANS = new Migration(16, "TDS deposits", """
+            CREATE TABLE tds_challan (
+                id                 TEXT    NOT NULL PRIMARY KEY,
+                kind               TEXT    NOT NULL CHECK (kind IN ('TDS', 'TCS')),
+                section            TEXT    NOT NULL,
+                deposit_date       TEXT    NOT NULL,
+                bsr_code           TEXT    NOT NULL CHECK (length(bsr_code) = 7),
+                challan_serial     TEXT    NOT NULL CHECK (length(challan_serial) = 5),
+                tax_e4             INTEGER NOT NULL CHECK (tax_e4 > 0 AND tax_e4 % 100 = 0),
+                interest_e4        INTEGER NOT NULL DEFAULT 0 CHECK (interest_e4 >= 0 AND interest_e4 % 100 = 0),
+                fee_e4             INTEGER NOT NULL DEFAULT 0 CHECK (fee_e4 >= 0 AND fee_e4 % 100 = 0),
+                account_ledger_id  TEXT    NOT NULL REFERENCES ledger (id),
+                voucher_id         TEXT    NOT NULL REFERENCES voucher (id),
+                created_at         INTEGER NOT NULL,
+                UNIQUE (bsr_code, deposit_date, challan_serial)
+            ) STRICT;
+
+            CREATE TABLE tds_challan_entry (
+                challan_id            TEXT    NOT NULL REFERENCES tds_challan (id),
+                withholding_entry_id  TEXT    NOT NULL UNIQUE REFERENCES withholding_entry (id),
+                amount_e4             INTEGER NOT NULL CHECK (amount_e4 > 0)
+            ) STRICT;
+
+            CREATE TRIGGER tds_challan_no_update BEFORE UPDATE ON tds_challan
+            BEGIN
+                SELECT RAISE(ABORT, 'A deposit is never edited');
+            END;
+
+            CREATE TRIGGER tds_challan_no_delete BEFORE DELETE ON tds_challan
+            BEGIN
+                SELECT RAISE(ABORT, 'A deposit is never deleted');
+            END;
+
+            CREATE TRIGGER tds_challan_entry_no_change BEFORE UPDATE ON tds_challan_entry
+            BEGIN
+                SELECT RAISE(ABORT, 'A deposit is never edited');
+            END;
+
+            CREATE TRIGGER tds_challan_entry_no_delete BEFORE DELETE ON tds_challan_entry
+            BEGIN
+                SELECT RAISE(ABORT, 'A deposit is never edited');
+            END;
+
+            -- A cancelled deduction cannot be deposited, and a deposited one cannot be cancelled.
+            CREATE TRIGGER tds_challan_entry_active BEFORE INSERT ON tds_challan_entry
+            WHEN (SELECT status FROM withholding_entry WHERE id = NEW.withholding_entry_id) <> 'ACTIVE'
+            BEGIN
+                SELECT RAISE(ABORT, 'A cancelled deduction is not deposited');
+            END;
+
+            CREATE TRIGGER withholding_entry_deposited_not_cancelled BEFORE UPDATE OF status ON withholding_entry
+            WHEN NEW.status = 'CANCELLED'
+             AND EXISTS (SELECT 1 FROM tds_challan_entry WHERE withholding_entry_id = OLD.id)
+            BEGIN
+                SELECT RAISE(ABORT, 'This deduction has been deposited; correct it with a note instead');
+            END;
+
+            """ + seedSystemLedger("TDS_INTEREST", "Interest and Fees on TDS", "INDIRECT_EXPENSES"));
 
     private static String gstPeriodLock(String side, String returnTypes) {
         return """

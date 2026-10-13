@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ChartGovernanceIT {
 
-    /** 4 kernel, Sales and Purchases (P7c), 15 GST (P9-7), 3 TDS/TCS (P9-13), 2 composition (P9-21). */
-    private static final long SEEDED_LEDGERS = 26;
+    /** 4 kernel, Sales/Purchases (P7c), 15 GST (P9-7), 3 TDS/TCS (P9-13), 2 composition (P9-21), TDS interest. */
+    private static final long SEEDED_LEDGERS = 27;
 
 
     @TempDir
