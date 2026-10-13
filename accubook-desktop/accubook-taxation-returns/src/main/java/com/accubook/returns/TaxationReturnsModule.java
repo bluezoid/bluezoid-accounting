@@ -37,13 +37,13 @@ public final class TaxationReturnsModule implements FeatureModule {
 
     @Override
     public Set<String> ownedTables() {
-        return Set.of("gst_return");
+        return Set.of("gst_return", "gstr2b_import", "gstr2b_document");
     }
 
-    /** Migration 13 created gst_return. */
+    /** Migration 13 created gst_return; 14 the GSTR-2B imports. */
     @Override
     public int requiredSchemaVersion() {
-        return 13;
+        return 14;
     }
 
     @Override

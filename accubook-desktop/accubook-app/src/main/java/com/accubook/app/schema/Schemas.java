@@ -87,7 +87,8 @@ public final class Schemas {
                 COMPANY_V3_ACCOUNT_GOVERNANCE, COMPANY_V4_PARTIES, COMPANY_V5_INVENTORY,
                 COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION,
                 COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
-                COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS);
+                COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS,
+                COMPANY_V14_GSTR2B);
     }
 
     /**
@@ -1668,6 +1669,73 @@ public final class Schemas {
 
             """ + gstPeriodLock("sales", "'GSTR1', 'GSTR3B', 'CMP08', 'GSTR9'")
             + gstPeriodLock("purchase", "'GSTR3B', 'CMP08', 'GSTR9'"));
+
+    /**
+     * Phase 9d-3: imported GSTR-2B statements ({@code taxation-returns}).
+     *
+     * <p>The file is kept as imported, with its SHA-256; its documents are
+     * extracted once. Re-importing a month supersedes the earlier import but
+     * keeps it, so a reconciliation can be explained later. Nothing is edited.
+     */
+    private static final Migration COMPANY_V14_GSTR2B = new Migration(14, "GSTR-2B imports", """
+            CREATE TABLE gstr2b_import (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                period_from     TEXT    NOT NULL,
+                gstin           TEXT    NOT NULL,
+                source          TEXT    NOT NULL,
+                source_sha256   TEXT    NOT NULL CHECK (length(source_sha256) = 64),
+                status          TEXT    NOT NULL DEFAULT 'CURRENT' CHECK (status IN ('CURRENT', 'SUPERSEDED')),
+                imported_at     INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE UNIQUE INDEX idx_gstr2b_import_current ON gstr2b_import (period_from) WHERE status = 'CURRENT';
+
+            CREATE TABLE gstr2b_document (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                import_id       TEXT    NOT NULL REFERENCES gstr2b_import (id),
+                -- INV: a supplier's invoice (B2B). CN or DN: its credit or debit note (CDNR).
+                doc_type        TEXT    NOT NULL CHECK (doc_type IN ('INV', 'CN', 'DN')),
+                ctin            TEXT    NOT NULL,
+                trade_name      TEXT,
+                number          TEXT    NOT NULL,
+                -- P9-18: the number compared - case, spaces, / - . and leading zeros dropped.
+                number_key      TEXT    NOT NULL,
+                doc_date        TEXT    NOT NULL,
+                place_of_supply TEXT,
+                reverse_charge  INTEGER NOT NULL CHECK (reverse_charge IN (0, 1)),
+                itc_available   INTEGER NOT NULL CHECK (itc_available IN (0, 1)),
+                value_e4        INTEGER NOT NULL,
+                taxable_e4      INTEGER NOT NULL,
+                igst_e4         INTEGER NOT NULL,
+                cgst_e4         INTEGER NOT NULL,
+                sgst_e4         INTEGER NOT NULL,
+                cess_e4         INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE INDEX idx_gstr2b_document_key ON gstr2b_document (import_id, ctin, number_key);
+
+            CREATE TRIGGER gstr2b_import_only_superseded BEFORE UPDATE ON gstr2b_import
+            WHEN NOT (OLD.status = 'CURRENT' AND NEW.status = 'SUPERSEDED' AND NEW.source = OLD.source
+                      AND NEW.period_from = OLD.period_from AND NEW.source_sha256 = OLD.source_sha256)
+            BEGIN
+                SELECT RAISE(ABORT, 'An imported GSTR-2B is kept as imported; import again to supersede it');
+            END;
+
+            CREATE TRIGGER gstr2b_import_no_delete BEFORE DELETE ON gstr2b_import
+            BEGIN
+                SELECT RAISE(ABORT, 'An imported GSTR-2B is never deleted');
+            END;
+
+            CREATE TRIGGER gstr2b_document_no_update BEFORE UPDATE ON gstr2b_document
+            BEGIN
+                SELECT RAISE(ABORT, 'A GSTR-2B document is kept as imported');
+            END;
+
+            CREATE TRIGGER gstr2b_document_no_delete BEFORE DELETE ON gstr2b_document
+            BEGIN
+                SELECT RAISE(ABORT, 'A GSTR-2B document is kept as imported');
+            END;
+            """);
 
     private static String gstPeriodLock(String side, String returnTypes) {
         return """

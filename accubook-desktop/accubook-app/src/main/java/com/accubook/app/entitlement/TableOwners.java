@@ -61,6 +61,8 @@ public final class TableOwners {
             Map.entry("purchase_settlement", ModuleId.of("purchase-billing")),
             Map.entry("purchase_allocation", ModuleId.of("purchase-billing")),
             Map.entry("gst_return", ModuleId.of("taxation-returns")),
+            Map.entry("gstr2b_import", ModuleId.of("taxation-returns")),
+            Map.entry("gstr2b_document", ModuleId.of("taxation-returns")),
             Map.entry("sales_quotation", ModuleId.of("sales-orders")),
             Map.entry("sales_quotation_line", ModuleId.of("sales-orders")),
             Map.entry("sales_order", ModuleId.of("sales-orders")),

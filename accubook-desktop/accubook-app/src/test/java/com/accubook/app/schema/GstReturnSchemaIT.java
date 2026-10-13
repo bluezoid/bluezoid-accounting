@@ -121,4 +121,21 @@ class GstReturnSchemaIT {
         assertThatThrownBy(() -> exec("INSERT INTO unit (id, symbol, name, decimals, uqc, created_at, updated_at) "
                 + "VALUES ('u', 'KG', 'Kilograms', 3, 'KG', 0, 0)")).hasMessageContaining("CHECK");
     }
+
+    @Test
+    @DisplayName("an imported GSTR-2B is kept as imported: only superseded, one current per month")
+    void gstr2bKept() throws SQLException {
+        String imp = "INSERT INTO gstr2b_import (id, period_from, gstin, source, source_sha256, imported_at) "
+                + "VALUES ('%s', '2026-05-01', '27PQRSX5678K1ZY', '{}', '" + HASH + "', 0)";
+        exec(imp.formatted("i1"));
+        assertThatThrownBy(() -> exec(imp.formatted("i2"))).hasMessageContaining("UNIQUE");
+        exec("INSERT INTO gstr2b_document (id, import_id, doc_type, ctin, number, number_key, doc_date, "
+                + "reverse_charge, itc_available, value_e4, taxable_e4, igst_e4, cgst_e4, sgst_e4, cess_e4) VALUES "
+                + "('x', 'i1', 'INV', '27LMNOP4321Q1Z4', 'A/1', 'A1', '2026-05-02', 0, 1, 1, 1, 0, 0, 0, 0)");
+        assertThatThrownBy(() -> exec("UPDATE gstr2b_document SET value_e4 = 2")).hasMessageContaining("as imported");
+        assertThatThrownBy(() -> exec("UPDATE gstr2b_import SET source = '[]'")).hasMessageContaining("as imported");
+        assertThatThrownBy(() -> exec("DELETE FROM gstr2b_import")).hasMessageContaining("never deleted");
+        exec("UPDATE gstr2b_import SET status = 'SUPERSEDED'");
+        assertThatCode(() -> exec(imp.formatted("i2"))).doesNotThrowAnyException();
+    }
 }
