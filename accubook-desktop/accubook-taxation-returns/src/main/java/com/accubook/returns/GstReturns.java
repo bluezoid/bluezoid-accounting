@@ -3,8 +3,11 @@ package com.accubook.returns;
 import com.accubook.module.EntitlementGuard;
 import com.accubook.module.ModuleTransactions;
 import com.accubook.platform.id.Ids;
+import com.accubook.platform.money.MoneyMapper;
+import com.accubook.platform.money.Scale;
 import com.accubook.tax.RulePack;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -70,6 +73,82 @@ public final class GstReturns {
     /** GSTR-3B in the portal's JSON field names (P9-15). */
     public String gstr3bJson(ReturnPeriod period) {
         return Gstr3bJson.write(gstr3b(period));
+    }
+
+    /**
+     * Import a GSTR-2B JSON file downloaded from the portal. It must be the
+     * company's GSTIN; an earlier import of the same month is superseded, not
+     * deleted. Returns the month and how many documents it holds.
+     */
+    public Gstr2bImported importGstr2b(String json) {
+        entitlement.requireWritable(TaxationReturnsModule.ID, "import GSTR-2B");
+        Gstr2bFile file = Gstr2bFile.parse(Objects.requireNonNull(json, "json"));
+        String id = Ids.newIdString();
+        boolean[] superseded = {false};
+        try {
+            transactions.inTransaction(connection -> {
+                String gstin = Gstr1Builder.requireRegularThroughout(connection, file.period());
+                if (!gstin.equals(file.gstin())) {
+                    throw new ReturnException("This GSTR-2B is for " + file.gstin() + ", not the company's "
+                            + gstin);
+                }
+                try (PreparedStatement ps = connection.prepareStatement("UPDATE gstr2b_import SET status = "
+                        + "'SUPERSEDED' WHERE period_from = ? AND status = 'CURRENT'")) {
+                    ps.setString(1, file.period().from().toString());
+                    superseded[0] = ps.executeUpdate() > 0;
+                }
+                try (PreparedStatement ps = connection.prepareStatement("INSERT INTO gstr2b_import (id, period_from, "
+                        + "gstin, source, source_sha256, imported_at) VALUES (?, ?, ?, ?, ?, ?)")) {
+                    ps.setString(1, id);
+                    ps.setString(2, file.period().from().toString());
+                    ps.setString(3, file.gstin());
+                    ps.setString(4, json);
+                    ps.setString(5, sha256(json));
+                    ps.setLong(6, clock.millis());
+                    ps.executeUpdate();
+                }
+                try (PreparedStatement ps = connection.prepareStatement("INSERT INTO gstr2b_document (id, import_id, "
+                        + "doc_type, ctin, trade_name, number, number_key, doc_date, place_of_supply, reverse_charge, "
+                        + "itc_available, value_e4, taxable_e4, igst_e4, cgst_e4, sgst_e4, cess_e4) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    for (Gstr2bFile.Doc d : file.documents()) {
+                        int i = 1;
+                        ps.setString(i++, Ids.newIdString());
+                        ps.setString(i++, id);
+                        ps.setString(i++, d.type());
+                        ps.setString(i++, d.ctin());
+                        ps.setString(i++, d.tradeName());
+                        ps.setString(i++, d.number());
+                        ps.setString(i++, Gstr2bFile.key(d.number()));
+                        ps.setString(i++, d.date().toString());
+                        ps.setString(i++, d.placeOfSupply());
+                        ps.setInt(i++, d.reverseCharge() ? 1 : 0);
+                        ps.setInt(i++, d.itcAvailable() ? 1 : 0);
+                        for (BigDecimal amount : List.of(d.value(), d.taxable(), d.igst(), d.cgst(), d.sgst(),
+                                d.cess())) {
+                            ps.setLong(i++, MoneyMapper.toStored(amount, Scale.MONEY));
+                        }
+                        ps.executeUpdate();
+                    }
+                }
+                return null;
+            });
+        } catch (SQLException e) {
+            throw new ReturnException("Could not import GSTR-2B: " + e.getMessage(), e);
+        }
+        return new Gstr2bImported(id, file.period(), file.documents().size(), superseded[0]);
+    }
+
+    /** The month's purchase documents against its imported GSTR-2B (P9d-3). */
+    public Gstr2bReconciliation reconcileGstr2b(ReturnPeriod period) {
+        requireReadable();
+        try {
+            return transactions.read(connection -> Gstr2bReconciler.build(connection, period)).orElseThrow(() ->
+                    new ReturnException("No GSTR-2B is imported for " + period.from().getMonth() + " "
+                            + period.from().getYear()));
+        } catch (SQLException e) {
+            throw new ReturnException("Could not reconcile GSTR-2B: " + e.getMessage(), e);
+        }
     }
 
     /**
