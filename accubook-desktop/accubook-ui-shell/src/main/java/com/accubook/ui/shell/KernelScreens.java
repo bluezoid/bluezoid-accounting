@@ -18,6 +18,7 @@ import java.util.List;
 final class KernelScreens implements ScreenProvider {
 
     static final String TRIAL_BALANCE = "trial-balance";
+    static final String COMPANY_SETTINGS = "company-settings";
 
     @Override
     public ModuleId module() {
@@ -26,7 +27,10 @@ final class KernelScreens implements ScreenProvider {
 
     @Override
     public List<NavigationEntry> entries() {
-        return List.of(NavigationEntry.of(TRIAL_BALANCE, Section.REPORTS, "Trial balance", 10, KernelScreens::trialBalance));
+        return List.of(
+                NavigationEntry.of(TRIAL_BALANCE, Section.REPORTS, "Trial balance", 10, KernelScreens::trialBalance),
+                NavigationEntry.of(COMPANY_SETTINGS, Section.SETTINGS, "Company and GST", 10,
+                        CompanySettingsScreen::new));
     }
 
     /** P6-4, now a tab. It reads through the context, which cannot run on the UI thread. */
