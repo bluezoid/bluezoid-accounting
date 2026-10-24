@@ -93,24 +93,24 @@ class CoreSchemaConstraintIT {
     }
 
     @Test
-    @DisplayName("rejects an opening balance direction outside DR/CR")
-    void rejectsUnknownOpeningBalanceType() {
-        // Defect D-1: the reference stores DEBIT/CREDIT and reads DR/CR, so
-        // every user-entered opening balance is sign-flipped.
+    @DisplayName("P11-1: a ledger carries no opening balance; openings are the opening voucher")
+    void rejectsLedgerOpeningBalance() {
+        // Defect D-1 was a sign-flipped opening balance column in the reference.
+        // The column is retired: an opening balance is a voucher, like any other.
         assertThatThrownBy(() -> exec(
                 "INSERT INTO ledger (id, group_id, name, opening_balance_e4, "
                         + "opening_balance_type, created_at, updated_at) "
-                        + "VALUES ('l9', 'g1', 'Bad', 100, 'DEBIT', 0, 0)"))
+                        + "VALUES ('l9', 'g1', 'Bad', 100, 'DR', 0, 0)"))
                 .isInstanceOf(SQLException.class)
-                .hasMessageContaining("CHECK");
+                .hasMessageContaining("opening voucher");
     }
 
     @Test
-    @DisplayName("rejects an opening balance with no direction")
-    void rejectsOpeningBalanceWithoutDirection() {
+    @DisplayName("an opening balance direction outside DR/CR is still refused by its CHECK")
+    void rejectsUnknownOpeningBalanceType() {
         assertThatThrownBy(() -> exec(
-                "INSERT INTO ledger (id, group_id, name, opening_balance_e4, created_at, updated_at) "
-                        + "VALUES ('l9', 'g1', 'Bad', 100, 0, 0)"))
+                "INSERT INTO ledger (id, group_id, name, opening_balance_type, created_at, updated_at) "
+                        + "VALUES ('l9', 'g1', 'Bad', 'DEBIT', 0, 0)"))
                 .isInstanceOf(SQLException.class)
                 .hasMessageContaining("CHECK");
     }

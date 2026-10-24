@@ -89,7 +89,7 @@ public final class Schemas {
                 COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
                 COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS,
                 COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION, COMPANY_V16_TDS_CHALLANS,
-                COMPANY_V17_EINVOICE, COMPANY_V18_BANKING);
+                COMPANY_V17_EINVOICE, COMPANY_V18_BANKING, COMPANY_V19_YEAR_END);
     }
 
     /**
@@ -2094,6 +2094,80 @@ public final class Schemas {
              AND EXISTS (SELECT 1 FROM bank_match WHERE ledger_id = OLD.ledger_id AND removed_on IS NULL)
             BEGIN
                 SELECT RAISE(ABORT, 'Reconciliation has started; its start date and balance are fixed');
+            END;
+            """);
+
+    /**
+     * Phase 11: year-end (B-2, I-16, P11-1). Kernel.
+     *
+     * <ul>
+     *   <li>No voucher is written into a closed year, or dated outside its
+     *       fiscal year - enforced here as well as in the posting core, which
+     *       did not check either. A reversal may still mark a closed year's
+     *       voucher REVERSED: the reversal itself is in an open year.</li>
+     *   <li>Years close in order and reopen latest first.</li>
+     *   <li>{@code fiscal_year_event}: the opening voucher, each close with its
+     *       closing voucher, each reopen with its reason and the reversal.</li>
+     *   <li>The ledger opening-balance columns are retired: opening balances are
+     *       an opening voucher (P11-1).</li>
+     * </ul>
+     */
+    private static final Migration COMPANY_V19_YEAR_END = new Migration(19, "year-end", """
+            CREATE TRIGGER voucher_year_open BEFORE INSERT ON voucher
+            WHEN EXISTS (SELECT 1 FROM fiscal_year f WHERE f.id = NEW.fiscal_year_id
+                         AND (f.is_closed = 1 OR NEW.voucher_date < f.start_date OR NEW.voucher_date > f.end_date))
+            BEGIN
+                SELECT RAISE(ABORT, 'A voucher goes in an open fiscal year that contains its date');
+            END;
+
+            CREATE TRIGGER fiscal_year_close_in_order BEFORE UPDATE OF is_closed ON fiscal_year
+            WHEN NEW.is_closed = 1 AND OLD.is_closed = 0
+             AND EXISTS (SELECT 1 FROM fiscal_year WHERE start_date < OLD.start_date AND is_closed = 0)
+            BEGIN
+                SELECT RAISE(ABORT, 'Close the earlier fiscal years first');
+            END;
+
+            CREATE TRIGGER fiscal_year_reopen_latest BEFORE UPDATE OF is_closed ON fiscal_year
+            WHEN NEW.is_closed = 0 AND OLD.is_closed = 1
+             AND EXISTS (SELECT 1 FROM fiscal_year WHERE start_date > OLD.start_date AND is_closed = 1)
+            BEGIN
+                SELECT RAISE(ABORT, 'Reopen the later closed year first');
+            END;
+
+            CREATE TABLE fiscal_year_event (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                fiscal_year_id  TEXT    NOT NULL REFERENCES fiscal_year (id),
+                action          TEXT    NOT NULL CHECK (action IN ('OPENING', 'CLOSE', 'REOPEN')),
+                voucher_id      TEXT REFERENCES voucher (id),
+                reason          TEXT,
+                actor           TEXT,
+                at              INTEGER NOT NULL,
+                CHECK (action <> 'REOPEN' OR reason IS NOT NULL)
+            ) STRICT;
+
+            CREATE INDEX idx_fiscal_year_event_year ON fiscal_year_event (fiscal_year_id, at);
+
+            CREATE TRIGGER fiscal_year_event_no_update BEFORE UPDATE ON fiscal_year_event
+            BEGIN
+                SELECT RAISE(ABORT, 'A year-end record is never edited');
+            END;
+
+            CREATE TRIGGER fiscal_year_event_no_delete BEFORE DELETE ON fiscal_year_event
+            BEGIN
+                SELECT RAISE(ABORT, 'A year-end record is never deleted');
+            END;
+
+            -- P11-1: opening balances are an opening voucher.
+            CREATE TRIGGER ledger_opening_retired_insert BEFORE INSERT ON ledger
+            WHEN NEW.opening_balance_e4 <> 0
+            BEGIN
+                SELECT RAISE(ABORT, 'Opening balances are entered as the opening voucher');
+            END;
+
+            CREATE TRIGGER ledger_opening_retired_update BEFORE UPDATE OF opening_balance_e4 ON ledger
+            WHEN NEW.opening_balance_e4 <> 0
+            BEGIN
+                SELECT RAISE(ABORT, 'Opening balances are entered as the opening voucher');
             END;
             """);
 

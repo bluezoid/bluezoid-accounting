@@ -59,8 +59,8 @@ class SchemaMigrationSafetyIT {
             // 8 (P7e) quotations and orders; 9 (P8) valuation; 10 (P9a) GST registration;
             // 11 (P9b) GST on documents; 12 (P9c) TDS and TCS; 13 (P9d) GST returns;
             // 14 (P9d-3) GSTR-2B imports; 15 (P9d-4) composition tax; 16 (P9d-5) TDS deposits;
-            // 17 (P9e) e-invoices and e-way bills; 18 (P10) banking.
-            assertThat(result.toVersion()).isEqualTo(18);
+            // 17 (P9e) e-invoices and e-way bills; 18 (P10) banking; 19 (P11) year-end.
+            assertThat(result.toVersion()).isEqualTo(19);
             assertThat(tables(database)).contains(
                     "company_info", "fiscal_year", "ledger_group", "ledger",
                     "voucher_type", "number_counter", "voucher", "voucher_entry", "audit_log",
