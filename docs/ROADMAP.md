@@ -300,7 +300,9 @@ I-14 decided 2026-10-24: customer-only key, with a printable recovery code.
 
 ## Phase 14 — Upgrade / downgrade / data migration
 - Full round trip **PRO → BASIC → PRO** with zero data loss
-- Dormant-module viewers; plan-change installers
+- Dormant-module viewers; plan-change installers. **Found in 11S:** the view
+  definitions live in each module's code, so a dormant module has none in the
+  build - move them into the base build first.
 - Combined plan-change + version-update paths
 - Migration from every shipped schema version on realistic data
 

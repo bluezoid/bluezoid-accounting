@@ -94,11 +94,21 @@ Migrations 19 (year triggers, fiscal_year_event, ledger opening cols retired),
 20 (cash_flow_activity). accounting: `year/` FiscalYears, `report/`
 FinancialStatements, Registers, Table, TableExport (CSV defuses = + - @).
 Kernel postings use FiscalYears.ACCOUNTING. Order entries by v.rowid, not id.
-**NEXT: Phase 12** backup/cloud (I-14 key custody OPEN - ask first).
+**PHASE 11S (screens) IN PROGRESS** - user put screens before P12. Decided
+I-14 (customer-only key), S-1..S-4 (keyboard-first, PDFBox, no login, English
++ Indian formats). Design `docs/phases/PHASE_11S_DESIGN.md` (S1..S6).
+**S1 DONE**: `accubook-ui-api` (ScreenProvider/NavigationEntry/ScreenContext,
+AmountField/DateField/Keyboard, UiThreadCheckedTransactions), shell =
+CompanyPicker + MainWindow + ScreenCatalogue + ShellScreenContext +
+KernelScreens (trial balance, company settings). Feature screens go in
+`accubook-ui-<feature>` (build.sh packages ui-X with X). UI tests: build the
+screen with a real `ShellScreenContext` (see CompanySettingsIT); create JavaFX
+nodes in start(), never in field initialisers. **NEXT: S2 masters.**
+Dormant viewer moved to P14 (views live in module code - gap).
 Mutation runs: use `mvn clean` on the test module (IDE trap struck again).
 NOTE: roadmap has NO phase for screens - biggest remaining item (told user).
 
-Suite: **841 passing, 0 failing** with UI on Xvfb (832 + 9 UI skipped default).
+Suite: **900 passing, 0 failing** with UI on Xvfb (UI tests skipped by default).
 Worktree trick to verify a committed intermediate state: `git worktree add
 --detach <scratch> HEAD` then `mvn -o -q clean verify` there, then remove.
 UI: `xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true`.

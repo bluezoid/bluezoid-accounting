@@ -81,7 +81,7 @@ Settings), tabbed work area, status bar. A company picker on start, as now.
 
 | | Scope |
 |---|---|
-| **S1** | `ui-api`, main window, navigation from providers, company create/open with identity, fiscal start month and GST registration; FX-thread guard; packaging rule; dormant viewer |
+| **S1** ✅ 2026-10-24 | `ui-api`, main window, navigation from providers, company create/open with identity, fiscal start month and GST registration; FX-thread guard; packaging rule. *(Dormant viewer moved to Phase 14 - see §6.)* |
 | **S2** | Masters: groups and ledgers, parties, items/units/warehouses/opening stock, bank accounts, opening voucher |
 | **S3** | Vouchers: journal, payment, receipt, contra; list, view, reverse |
 | **S4** | Sales invoices, credit notes, purchase bills, debit notes; receipts and payments with allocation; quotations and orders; print/PDF of a tax invoice |
@@ -109,3 +109,26 @@ screen matches the engine's.
 | **S-2** | Print and PDF | **Bundle Apache PDFBox** (Apache-2.0, about 3 MB) to write invoices and reports as PDF files, which are then printed or attached; an A4 GST tax invoice (Rule 46 fields) as the one layout in v1. Without it, output depends on each OS's print-to-PDF and a saved PDF is not guaranteed on Linux. |
 | **S-3** | Users and login | **No login in v1**: one user per installation; the data is protected by the operating system account (I-15). A password without encryption at rest only looks like protection. Local users with roles can follow. |
 | **S-4** | Language and formats | **English, Indian formats:** lakh/crore grouping, ₹, dd-mm-yyyy; light theme. Hindi and other languages later, with text kept in resource bundles from the start. |
+
+## 6. Progress and findings
+
+**S1 complete 2026-10-24** — 900 tests, 0 failing, with UI on Xvfb.
+- `accubook-ui-api`: `AmountInput`/`DateInput` (never round; day first; year
+  from the fiscal year), `AmountField`, `DateField`, `Keyboard.enterAdvances`,
+  the screen contract, `UiThreadCheckedTransactions`.
+- Shell: company picker (fiscal start month and first date, D-32), main window
+  (navigation, tabs, shortcuts, Ctrl+W, read-only banner, change company),
+  `ScreenCatalogue`, `ShellScreenContext`, trial balance as a tab, company and
+  GST settings screen.
+- `build.sh`: `accubook-ui-X` packaged exactly with `accubook-X`; Basic image
+  built and launched. First tested for real when a feature UI module exists (S2).
+
+**Findings**
+- **Dormant viewer cannot work as built.** Each module declares its
+  `historicalViews()` in its own code, so a DORMANT module - code absent - has
+  no view definitions in the build, and the P4 viewer would show nothing. The
+  definitions must live in the base build (the P4 decision says so; the code
+  did not follow it). Moved to **Phase 14**, which owns dormant-module viewers.
+- The trial balance relied on a ComboBox action event that does not reliably
+  fire while a new tab is built; it sometimes never loaded. Fixed (load on the
+  value) and found only because the shell test became a tab test.
