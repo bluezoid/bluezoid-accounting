@@ -74,8 +74,10 @@ public final class TrialBalanceView extends BorderPane {
         yearPicker.setId("fiscalYearPicker");
         yearPicker.setCellFactory(list -> new YearCell());
         yearPicker.setButtonCell(new YearCell());
-        yearPicker.setOnAction(event -> {
-            FiscalYear year = yearPicker.getValue();
+        // The value, not the action event: while a new tab's controls are still
+        // being built, setting the value does not reliably fire an action, and
+        // the first year then never loaded (found in the Phase 11S shell test).
+        yearPicker.valueProperty().addListener((obs, old, year) -> {
             if (year != null) {
                 loadTrialBalance(year);
             }
@@ -119,9 +121,13 @@ public final class TrialBalanceView extends BorderPane {
     private void loadYears() {
         runAsync("Reading fiscal years", source::fiscalYears, years -> {
             yearPicker.getItems().setAll(years);
-            TrialBalanceQuery.defaultYear(years, today).ifPresentOrElse(
-                    yearPicker::setValue,   // fires the picker's action, which loads it
-                    () -> setStatus("This company has no fiscal year.", false));
+            TrialBalanceQuery.defaultYear(years, today).ifPresentOrElse(year -> {
+                if (year.equals(yearPicker.getValue())) {
+                    loadTrialBalance(year);
+                } else {
+                    yearPicker.setValue(year);  // the listener loads it
+                }
+            }, () -> setStatus("This company has no fiscal year.", false));
         });
     }
 
