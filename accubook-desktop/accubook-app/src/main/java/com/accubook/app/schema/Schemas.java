@@ -89,7 +89,7 @@ public final class Schemas {
                 COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
                 COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS,
                 COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION, COMPANY_V16_TDS_CHALLANS,
-                COMPANY_V17_EINVOICE);
+                COMPANY_V17_EINVOICE, COMPANY_V18_BANKING);
     }
 
     /**
@@ -1928,6 +1928,172 @@ public final class Schemas {
             WHEN (SELECT status FROM sales_document WHERE id = NEW.document_id) <> 'POSTED'
             BEGIN
                 SELECT RAISE(ABORT, 'Only a posted document has an e-way bill');
+            END;
+            """);
+
+    /**
+     * Phase 10: banking ({@code banking}).
+     *
+     * <ul>
+     *   <li>{@code bank_account}: the bank details of a Cash &amp; Bank ledger. No
+     *       balance: the ledger's is the only one (the reference keeps two).
+     *       Reconciliation starts at a date, from the statement balance on it
+     *       (P10-5).</li>
+     *   <li>{@code bank_statement_import} and {@code bank_statement_line}: each
+     *       file kept with its SHA-256; each line's identity unique per account,
+     *       so an overlapping re-import adds only new lines and two identical
+     *       lines stay two (P10-2, R-27).</li>
+     *   <li>{@code bank_match} with its lines and entries: statement lines
+     *       matched to the bank ledger's voucher entries, one-to-many either
+     *       way, dated with the statement's date. Removed, never deleted.</li>
+     * </ul>
+     */
+    private static final Migration COMPANY_V18_BANKING = new Migration(18, "banking", """
+            CREATE TABLE bank_account (
+                ledger_id            TEXT    NOT NULL PRIMARY KEY REFERENCES ledger (id),
+                bank_name            TEXT    NOT NULL,
+                branch               TEXT,
+                account_number       TEXT    NOT NULL UNIQUE,
+                ifsc                 TEXT CHECK (ifsc IS NULL OR length(ifsc) = 11),
+                account_type         TEXT    NOT NULL
+                    CHECK (account_type IN ('CURRENT', 'SAVINGS', 'CASH_CREDIT', 'OVERDRAFT')),
+                reconcile_from       TEXT,
+                -- The statement's balance at the end of the day before reconcile_from; negative when overdrawn.
+                opening_statement_e4 INTEGER,
+                created_at           INTEGER NOT NULL,
+                updated_at           INTEGER NOT NULL,
+                CHECK ((reconcile_from IS NULL) = (opening_statement_e4 IS NULL))
+            ) STRICT;
+
+            CREATE TRIGGER bank_account_cash_and_bank BEFORE INSERT ON bank_account
+            WHEN NOT EXISTS (SELECT 1 FROM ledger l JOIN ledger_group g ON g.id = l.group_id
+                             WHERE l.id = NEW.ledger_id AND g.system_code = 'CASH_AND_BANK')
+            BEGIN
+                SELECT RAISE(ABORT, 'A bank account is a ledger in the Cash & Bank group');
+            END;
+
+            CREATE TABLE bank_statement_import (
+                id             TEXT    NOT NULL PRIMARY KEY,
+                ledger_id      TEXT    NOT NULL REFERENCES bank_account (ledger_id),
+                file_name      TEXT    NOT NULL,
+                layout         TEXT    NOT NULL,
+                source         TEXT    NOT NULL,
+                source_sha256  TEXT    NOT NULL CHECK (length(source_sha256) = 64),
+                lines_read     INTEGER NOT NULL,
+                lines_added    INTEGER NOT NULL,
+                imported_at    INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE TABLE bank_statement_line (
+                id          TEXT    NOT NULL PRIMARY KEY,
+                ledger_id   TEXT    NOT NULL REFERENCES bank_account (ledger_id),
+                import_id   TEXT    NOT NULL REFERENCES bank_statement_import (id),
+                line_date   TEXT    NOT NULL,
+                narration   TEXT    NOT NULL,
+                reference   TEXT,
+                -- Money out of the account, or into it: one of the two.
+                withdrawal_e4 INTEGER NOT NULL CHECK (withdrawal_e4 >= 0 AND withdrawal_e4 % 100 = 0),
+                deposit_e4    INTEGER NOT NULL CHECK (deposit_e4 >= 0 AND deposit_e4 % 100 = 0),
+                balance_e4  INTEGER,
+                occurrence  INTEGER NOT NULL CHECK (occurrence >= 1),
+                identity    TEXT    NOT NULL,
+                CHECK ((withdrawal_e4 > 0) <> (deposit_e4 > 0)),
+                UNIQUE (ledger_id, identity)
+            ) STRICT;
+
+            CREATE INDEX idx_bank_statement_line_date ON bank_statement_line (ledger_id, line_date);
+
+            CREATE TABLE bank_match (
+                id            TEXT    NOT NULL PRIMARY KEY,
+                ledger_id     TEXT    NOT NULL REFERENCES bank_account (ledger_id),
+                -- The bank's date: the latest statement line's.
+                cleared_on    TEXT    NOT NULL,
+                confirmed_at  INTEGER NOT NULL,
+                removed_on    TEXT,
+                removal_reason TEXT,
+                CHECK ((removed_on IS NULL) = (removal_reason IS NULL))
+            ) STRICT;
+
+            CREATE TABLE bank_match_line (
+                match_id          TEXT    NOT NULL REFERENCES bank_match (id),
+                statement_line_id TEXT    NOT NULL REFERENCES bank_statement_line (id),
+                active            INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
+            ) STRICT;
+
+            CREATE TABLE bank_match_entry (
+                match_id          TEXT    NOT NULL REFERENCES bank_match (id),
+                voucher_entry_id  TEXT    NOT NULL REFERENCES voucher_entry (id),
+                active            INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
+            ) STRICT;
+
+            -- Each statement line and each voucher entry in at most one live match.
+            CREATE UNIQUE INDEX idx_bank_match_line_live ON bank_match_line (statement_line_id) WHERE active = 1;
+            CREATE UNIQUE INDEX idx_bank_match_entry_live ON bank_match_entry (voucher_entry_id) WHERE active = 1;
+
+            CREATE TRIGGER bank_statement_line_no_update BEFORE UPDATE ON bank_statement_line
+            BEGIN
+                SELECT RAISE(ABORT, 'A statement line is kept as imported');
+            END;
+
+            CREATE TRIGGER bank_statement_line_no_delete BEFORE DELETE ON bank_statement_line
+            BEGIN
+                SELECT RAISE(ABORT, 'A statement line is kept as imported');
+            END;
+
+            CREATE TRIGGER bank_statement_import_no_change BEFORE UPDATE ON bank_statement_import
+            BEGIN
+                SELECT RAISE(ABORT, 'An imported statement is kept as imported');
+            END;
+
+            CREATE TRIGGER bank_statement_import_no_delete BEFORE DELETE ON bank_statement_import
+            BEGIN
+                SELECT RAISE(ABORT, 'An imported statement is kept as imported');
+            END;
+
+            CREATE TRIGGER bank_match_only_removed BEFORE UPDATE ON bank_match
+            WHEN NOT (OLD.removed_on IS NULL AND NEW.removed_on IS NOT NULL
+                      AND NEW.cleared_on = OLD.cleared_on AND NEW.ledger_id = OLD.ledger_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'A match is removed with a reason, never edited');
+            END;
+
+            CREATE TRIGGER bank_match_no_delete BEFORE DELETE ON bank_match
+            BEGIN
+                SELECT RAISE(ABORT, 'A match is removed with a reason, never deleted');
+            END;
+
+            CREATE TRIGGER bank_match_line_only_deactivated BEFORE UPDATE ON bank_match_line
+            WHEN NOT (OLD.active = 1 AND NEW.active = 0 AND NEW.match_id = OLD.match_id
+                      AND NEW.statement_line_id = OLD.statement_line_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'A match is removed, never edited');
+            END;
+
+            CREATE TRIGGER bank_match_entry_only_deactivated BEFORE UPDATE ON bank_match_entry
+            WHEN NOT (OLD.active = 1 AND NEW.active = 0 AND NEW.match_id = OLD.match_id
+                      AND NEW.voucher_entry_id = OLD.voucher_entry_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'A match is removed, never edited');
+            END;
+
+            CREATE TRIGGER bank_match_line_no_delete BEFORE DELETE ON bank_match_line
+            BEGIN
+                SELECT RAISE(ABORT, 'A match is removed, never deleted');
+            END;
+
+            CREATE TRIGGER bank_match_entry_no_delete BEFORE DELETE ON bank_match_entry
+            BEGIN
+                SELECT RAISE(ABORT, 'A match is removed, never deleted');
+            END;
+
+            -- P10-5: the start is fixed once anything on or after it is matched.
+            CREATE TRIGGER bank_account_start_fixed BEFORE UPDATE OF reconcile_from, opening_statement_e4
+            ON bank_account
+            WHEN (NEW.reconcile_from IS NOT OLD.reconcile_from
+                  OR NEW.opening_statement_e4 IS NOT OLD.opening_statement_e4)
+             AND EXISTS (SELECT 1 FROM bank_match WHERE ledger_id = OLD.ledger_id AND removed_on IS NULL)
+            BEGIN
+                SELECT RAISE(ABORT, 'Reconciliation has started; its start date and balance are fixed');
             END;
             """);
 
