@@ -212,4 +212,19 @@ class TdsDepositsIT {
         assertThatThrownBy(() -> purchases.cancel(fees.id(), "Entered twice", LocalDate.of(2026, 6, 10)))
                 .hasMessageContaining("deposited");
     }
+
+    @Test
+    @DisplayName("a deduction on 31 March is in Q4, and one on 1 April is not (the reference lost late-evening ones)")
+    void quarterBoundaries() {
+        Party lawyer = party("Year End Advisors", null, "ABCPK1234L");
+        Document march = purchases.post(purchases.createDraft(DraftRequest.of(DocumentKind.PURCHASE_BILL,
+                lawyer.id(), LocalDate.of(2027, 3, 31), List.of(LineRequest.text("Audit fees", d("1"), d("60000"))))
+                .withWithholding("194J-PROF")).id());
+
+        assertThat(deposits.quarterly("TDS", ReturnPeriod.quarter(2027, 1)).deductions())
+                .extracting(TdsDeduction::documentNumber).containsExactly(march.number());
+        assertThat(deposits.quarterly("TDS", ReturnPeriod.quarter(2026, 4)).deductions())
+                .extracting(TdsDeduction::documentNumber).doesNotContain(march.number());
+        assertThat(deposits.deductions("TDS", LocalDate.of(2027, 4, 1), LocalDate.of(2027, 6, 30))).isEmpty();
+    }
 }

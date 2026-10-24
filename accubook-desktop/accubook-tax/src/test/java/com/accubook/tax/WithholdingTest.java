@@ -126,4 +126,18 @@ class WithholdingTest {
         assertThat(Withholding.yearStart(LocalDate.of(2027, 3, 31))).isEqualTo(LocalDate.of(2026, 4, 1));
         assertThat(Withholding.yearStart(LocalDate.of(2026, 4, 1))).isEqualTo(LocalDate.of(2026, 4, 1));
     }
+
+    @Test
+    @DisplayName("without a PAN the rate is 20%, but the single limit still applies")
+    void noPanKeepsThreshold() {
+        assertThat(tds("194C", null, "25000", "0", "0").amount()).isEqualByComparingTo("0");
+        assertThat(tds("194C", null, "30000.01", "0", "0").amount()).isEqualByComparingTo("6000.00");
+    }
+
+    @Test
+    @DisplayName("194I on plant and machinery is 2%, on land and buildings 10%")
+    void rentRates() {
+        assertThat(tds("194I-PM", COMPANY, "60000", "0", "0").amount()).isEqualByComparingTo("1200.00");
+        assertThat(tds("194I-LAND", COMPANY, "60000", "0", "0").amount()).isEqualByComparingTo("6000.00");
+    }
 }
