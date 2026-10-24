@@ -266,8 +266,9 @@ gap (194C(6) transporters, P9-29; Form 27D).
 - Statement import: correct amount sanitizer, dedup backed by a unique index
 - **One** reconciliation engine using the scoring model (fixes **D-29**)
 
-## Phase 11 — Year-end closing + financial reporting
-**Blocked by: B-2 (closing voucher confirmation), I-16 (reopen policy)**
+## Phase 11 — Year-end closing + financial reporting ✅ COMPLETE 2026-10-24 (see `phases/PHASE_11_REPORT.md`)
+B-2 and I-16 decided 2026-10-24. Print/PDF moves with the screens; the party
+statement is the party's ledger account for now.
 
 - **Real closing voucher** moving P&L to Retained Earnings
 - `isClosed` **enforced at posting time**; voucher date validated against the FY
