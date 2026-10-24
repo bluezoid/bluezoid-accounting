@@ -1,7 +1,7 @@
 # Phase 9 Report — Indian Taxation
 
-**Status:** IN PROGRESS — **P9a ✅** · **P9b ✅** · **P9c ✅** · **P9d ✅** · P9e not started
-**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-16 2026-10-12; P9-17…P9-24 2026-10-13)
+**Status:** ✅ **COMPLETE 2026-10-24** — P9a · P9b · P9c · P9d · P9e
+**Design:** `PHASE_9_DESIGN.md` (B-4, P9-1…P9-4 approved 2026-10-10; P9-5…P9-16 2026-10-12; P9-17…P9-24 2026-10-13; P9-25…P9-28 2026-10-24)
 
 ---
 
@@ -205,4 +205,55 @@ dated rates; P9-21 composition tax booked on filing; P9-22 GSTR-9 tables
   interest counting in calendar months is to be confirmed by a CA (V-1).
 - A Basic customer without the add-on cannot record TDS deposits in the app
   except as an ordinary payment voucher.
+
+---
+
+## P9e — E-invoice and e-way bill payloads ✅ (2026-10-24)
+
+**Tests:** **805 passing · 0 failing · 0 skipped** with UI on Xvfb (796 + 9 UI)
+**Before:** 793 (+12)
+**Decisions:** P9-25 e-invoicing from a declared date; P9-26 IRN cancel window
+24 hours; P9-27 e-way advice on value with tax; P9-28 responses imported only.
+
+### Implemented
+
+| Item | Where |
+|---|---|
+| Company legal name and address with PIN check | `CompanyIdentity` (tax) |
+| Rule pack: states' own intra-state e-way limits (none listed until verified) | `RulePack.ewayBillLimit` |
+| Migration 17: e-invoicing applicability, IRN and e-way bill records kept with their responses | `Schemas` |
+| IRP e-invoice JSON 1.1 for posted B2B invoices and credit notes; EWB JSON for outward invoices of goods; all problems listed together | `EInvoices` |
+| Responses imported only when the signed invoice / EWB details name the document; never generated | `EInvoices` |
+| Cancelling an invoice whose IRN is over 24 hours old refused; IRNs of cancelled invoices listed for the portal | `DocumentEngine`, `EInvoices` |
+
+### Finding
+- **R-25** the reference refuses e-way bills on taxable value below ₹50,000;
+  rule 138 counts the value with tax (₹45,000 + 18% = ₹53,100 needs one).
+
+### Verification
+- `EInvoiceIT` (7). Mutations caught: taxable-only e-way value, no IRN window,
+  importing a response for another document.
+
+### Limits
+- The IRP's signature on the signed invoice is not verified (NIC's public key
+  is not bundled); the response is checked for the document it names.
+- Payload shapes follow the published schemas; to be validated against the
+  IRP and EWB sandboxes before release (V-1). No direct API calls (GSP, P9-15).
+- E-way bills for inward movements, job work and credit-note returns are not built.
+
+---
+
+## Phase 9 exit
+
+**Exit criterion:** "~124 GST and ~75 TDS/TCS ported tests green."
+Met in substance, not by count. The tests were written against the law rather
+than ported, because the reference's tables are stale (R-17) and several of its
+computations are wrong (R-18 to R-25). There are **134 GST** and **40 TDS/TCS**
+tests. Every reference TDS test case was reviewed: the missing ones were added
+(no-PAN threshold, 194I rates, the 31 March quarter boundary) or recorded as
+gaps - 194C(6) transport contractors (**P9-29**, open) and Form 27D.
+
+**Release gate V-1 still applies:** every rate, threshold, list and portal
+format in Phase 9 is UNVERIFIED until a chartered accountant signs it off, and
+the development rule-pack keys must be replaced.
 
