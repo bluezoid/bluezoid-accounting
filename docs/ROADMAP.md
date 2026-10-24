@@ -280,8 +280,12 @@ statement is the party's ledger account for now.
 **Exit:** close year 1, verify year 2 opening equals year 1 closing, and confirm
 a back-dated post into the closed year is refused.
 
+## Phase 11S — Screens (added 2026-10-24, before Phase 12 at the user's request)
+The engine of Phases 5–11 has no user interface beyond the P1 skeleton. This
+phase puts it on screen: design in `phases/PHASE_11S_DESIGN.md`.
+
 ## Phase 12 — Backup / cloud module
-**Blocked by: I-14 (key custody confirmation)**
+I-14 decided 2026-10-24: customer-only key, with a printable recovery code.
 
 - `CloudStorageProvider` SPI; Cloudflare R2 / S3 implementation
 - Argon2id + AES-256-GCM, encrypted **before** leaving the machine
