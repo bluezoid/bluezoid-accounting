@@ -42,6 +42,30 @@ class CompanyLifecycleIT {
     }
 
     @Test
+    @DisplayName("D-32: a company chooses its fiscal start month and the year its books begin")
+    void fiscalYearChosen(@TempDir Path dir) throws Exception {
+        try (CompanyService service = CompanyService.start(dir)) {
+            Company company = service.createCompany("  Calendar Traders ", 1, java.time.LocalDate.of(2025, 6, 15));
+            service.openCompany(company.id());
+
+            assertThat(company.name()).isEqualTo("Calendar Traders");
+            assertThat(service.readIdentityFromFile(company.id()).orElseThrow().fiscalYearStartMonth()).isEqualTo(1);
+            String firstYear = service.readOpenCompany(c -> {
+                try (Statement s = c.createStatement();
+                     java.sql.ResultSet r = s.executeQuery("SELECT start_date, end_date FROM fiscal_year")) {
+                    r.next();
+                    return r.getString(1) + " " + r.getString(2);
+                }
+            });
+            assertThat(firstYear).isEqualTo("2025-01-01 2025-12-31");
+            assertThatThrownBy(() -> service.createCompany(" ", 4, java.time.LocalDate.now()))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> service.createCompany("X", 13, java.time.LocalDate.now()))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
     @DisplayName("the company file carries its own identity (P2-4)")
     void companyFileIsSelfIdentifying(@TempDir Path dir) throws Exception {
         String id;

@@ -172,11 +172,29 @@ public final class CompanyService implements AutoCloseable {
      * file that does not exist is a broken installation the user cannot fix.
      */
     public Company createCompany(String name) throws SQLException, IOException {
+        return createCompany(name, DEFAULT_FISCAL_YEAR_START_MONTH, LocalDate.now());
+    }
+
+    /**
+     * Create a company whose fiscal year starts in {@code fiscalYearStartMonth}
+     * (D-32), with its first year the one containing {@code booksFrom}.
+     */
+    public Company createCompany(String name, int fiscalYearStartMonth, LocalDate booksFrom)
+            throws SQLException, IOException {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("A company needs a name");
+        }
+        if (fiscalYearStartMonth < 1 || fiscalYearStartMonth > 12) {
+            throw new IllegalArgumentException("A fiscal year starts in a month from 1 to 12");
+        }
+        java.util.Objects.requireNonNull(booksFrom, "booksFrom");
+        name = name.strip();
         String id = Ids.newIdString();
         paths.createCompanyDirectories(id);
 
         Instant createdAt = Instant.now();
         int schemaVersion;
+        String companyName = name;
 
         try (Database companyDatabase = Database.open(paths.companyDatabase(id))) {
             schemaVersion = companyMigrations.migrate(companyDatabase).toVersion();
@@ -184,13 +202,12 @@ public final class CompanyService implements AutoCloseable {
             // year in one transaction, so a half-provisioned company cannot
             // survive a failure.
             companyDatabase.inTransaction(connection -> {
-                CompanyProvisioning.provision(connection, id, name,
-                        DEFAULT_FISCAL_YEAR_START_MONTH, LocalDate.now());
+                CompanyProvisioning.provision(connection, id, companyName, fiscalYearStartMonth, booksFrom);
                 return null;
             });
         }
 
-        Company company = new Company(id, name, schemaVersion, createdAt, null);
+        Company company = new Company(id, companyName, schemaVersion, createdAt, null);
         registry.register(company);
         return company;
     }
