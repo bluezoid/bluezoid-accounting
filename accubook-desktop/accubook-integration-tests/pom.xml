@@ -19,6 +19,7 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-sales-orders</artifactId><version>${project.version}</version><scope>test</scope></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-purchase-orders</artifactId><version>${project.version}</version><scope>test</scope></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-taxation-returns</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-banking</artifactId><version>${project.version}</version><scope>test</scope></dependency>
   </dependencies>
   <build>
     <plugins>

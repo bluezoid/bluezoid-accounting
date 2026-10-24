@@ -27,6 +27,7 @@
     <module>accubook-sales-orders</module>
     <module>accubook-purchase-orders</module>
     <module>accubook-taxation-returns</module>
+    <module>accubook-banking</module>
     <module>accubook-integration-tests</module>
     <module>accubook-ui-shell</module>
     <module>accubook-launcher</module>
