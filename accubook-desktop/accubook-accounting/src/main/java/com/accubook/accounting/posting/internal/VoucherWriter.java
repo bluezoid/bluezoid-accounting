@@ -90,6 +90,7 @@ public final class VoucherWriter {
         }
 
         requireActiveLedgers(connection, request.entries());
+        requireOpenYear(connection, request.fiscalYearId(), request.voucherDate());
 
         String scope = request.voucherTypeId() + ":" + request.fiscalYearId();
         long number = NumberAllocator.next(connection, scope, now);
@@ -121,6 +122,7 @@ public final class VoucherWriter {
     static PostedVoucher reverse(Connection connection, String originalId,
                                  ReversalRequest request, long now) throws SQLException {
         OriginalVoucher original = loadForReversal(connection, originalId);
+        requireOpenYear(connection, request.fiscalYearId(), request.reversalDate());
 
         List<EntryLine> reversedEntries = loadEntries(connection, originalId).stream()
                 .map(EntryLine::reversed)
@@ -153,6 +155,32 @@ public final class VoucherWriter {
         return new PostedVoucher(reversalId, voucherNumber, request.reversalDate(),
                 MoneyMapper.fromStored(original.totalE4, Scale.MONEY),
                 VoucherStatus.POSTED, false);
+    }
+
+    /**
+     * B-2: a voucher goes in an open fiscal year that contains its date. The
+     * schema refuses it too; this says which rule failed.
+     */
+    private static void requireOpenYear(Connection connection, String fiscalYearId, java.time.LocalDate date)
+            throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT name, start_date, end_date, is_closed FROM fiscal_year WHERE id = ?")) {
+            ps.setString(1, fiscalYearId);
+            try (java.sql.ResultSet rows = ps.executeQuery()) {
+                if (!rows.next()) {
+                    throw new PostingException("No such fiscal year: " + fiscalYearId);
+                }
+                if (rows.getInt(4) == 1) {
+                    throw new PostingException("Fiscal year " + rows.getString(1) + " is closed; post in an open "
+                            + "year, or reopen it");
+                }
+                if (date.isBefore(java.time.LocalDate.parse(rows.getString(2)))
+                        || date.isAfter(java.time.LocalDate.parse(rows.getString(3)))) {
+                    throw new PostingException(date + " is outside fiscal year " + rows.getString(1) + " ("
+                            + rows.getString(2) + " to " + rows.getString(3) + ")");
+                }
+            }
+        }
     }
 
     /**
