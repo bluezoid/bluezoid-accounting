@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28, P10-1…P10-5, B-2, I-16, P11-1, P11-2, I-14 (2026-10-24).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28, P10-1…P10-5, B-2, I-16, P11-1, P11-2, I-14, S-1…S-4 (2026-10-24).
 
 **Still open:** B-5 · P9-29 · I-3, I-6…I-18 · N-2…N-9.
 
@@ -747,6 +747,16 @@ How many automatic re-binds per year before manual approval?
 ## I-13 · One licence = one machine, always?
 The brief says yes; ENTERPRISE customers will ask for more. Much easier to design
 multi-seat in now than to retrofit.
+
+## S-1…S-4 · Screens (Phase 11S) — ✅ **DECIDED 2026-10-24**
+
+> **S-1** keyboard-first, mouse fully supported (Enter advances, Esc back,
+> Ctrl+S save, F4–F9 voucher types as in Tally, type-to-search lookups).
+> **S-2** bundle Apache PDFBox (Apache-2.0) for PDF; one A4 GST tax invoice
+> layout (Rule 46) in v1. **S-3** no login in v1; one user per installation,
+> protected by the OS account (I-15). **S-4** English with Indian formats
+> (lakh grouping, ₹, dd-mm-yyyy), light theme, text in resource bundles.
+> Detail: `docs/phases/PHASE_11S_DESIGN.md` §5.
 
 ## I-14 · Backup key custody — ✅ **DECIDED 2026-10-24: customer-only key**
 
