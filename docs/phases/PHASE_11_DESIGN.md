@@ -1,6 +1,6 @@
 # Phase 11 Design — Year-end closing and financial reporting
 
-**Status:** DESIGN — awaiting B-2, I-16, P11-1, P11-2
+**Status:** APPROVED 2026-10-24 (B-2, I-16, P11-1, P11-2 as recommended)
 
 ---
 

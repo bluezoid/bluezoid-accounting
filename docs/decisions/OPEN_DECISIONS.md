@@ -6,9 +6,9 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28, P10-1…P10-5 (2026-10-24).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28, P10-1…P10-5, B-2, I-16, P11-1, P11-2 (2026-10-24).
 
-**Still open:** B-2 · B-5 · P9-29 · I-3, I-6…I-18 · N-2…N-9.
+**Still open:** B-5 · P9-29 · I-3, I-6…I-18 · N-2…N-9.
 
 ## Classification
 
@@ -101,7 +101,12 @@ defined starting position.
 **Depends on it:** Phase 6 (Inventory), the P&L and balance sheet, Phase 9
 (manufacturing).
 
-## B-2 · Year-end: closing voucher or derived retained earnings?
+## B-2 · Year-end: closing voucher or derived retained earnings? — ✅ **DECIDED 2026-10-24: (a)**
+
+> A real closing voucher to Retained Earnings and a locked year (posting core
+> and schema); year 2 opens from year 1's closing by construction; closing
+> refused with drafts or a missing/stale year-end stock valuation
+> (`PHASE_11_DESIGN.md` §3).
 
 **Question.** Post a real closing voucher and lock the year, or derive retained
 earnings at report time?
@@ -331,6 +336,16 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 >   alone (R-18).
 > - **P9-13:** one TDS Payable and one TDS Receivable ledger; deductions tagged
 >   with their section.
+
+## P11-1, P11-2 · Opening balances, cash flow — ✅ **APPROVED 2026-10-24**
+
+> - **P11-1:** opening balances as one balanced opening voucher on the first
+>   day; differences to Opening Balance Equity with a warning; parties and
+>   stock by their own documents; the ledger opening columns retired.
+> - **P11-2:** cash flow by the direct method from Cash & Bank movements,
+>   classified by the counter-ledger's group (operating by default; fixed
+>   assets investing; loans and capital financing; contra left out); the
+>   mapping visible and changeable.
 
 ## P10-1…P10-5 · Phase 10 banking — ✅ **APPROVED 2026-10-24**
 
@@ -742,7 +757,12 @@ OS disk encryption (free) vs SQLCipher (native lib per platform, licensing
 review, jlink/jpackage complexity). **Recommendation: OS-level for v1** plus
 encrypted backups; revisit SQLCipher later.
 
-## I-16 · Reopen policy for closed years
+## I-16 · Reopen policy for closed years — ✅ **DECIDED 2026-10-24**
+
+> Only the most recently closed year, with a reason, audited; reopening
+> reverses its closing voucher; corrections in that year; re-closing posts a
+> fresh one. After adoption, corrections are current-year prior-period items.
+
 Who may reopen, how often, and are prior-period adjustments posted to the prior
 year or as current-year adjusting entries? Both are defensible; the choice must
 be explicit and consistent.
