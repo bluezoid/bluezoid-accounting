@@ -261,7 +261,7 @@ not ported (the reference's tables are stale, R-17). 134 GST and 40 TDS/TCS
 tests; every reference TDS case reviewed and either covered or recorded as a
 gap (194C(6) transporters, P9-29; Form 27D).
 
-## Phase 10 — Banking + reconciliation
+## Phase 10 — Banking + reconciliation ✅ COMPLETE 2026-10-24 (see `phases/PHASE_10_REPORT.md`)
 - Bank accounts with a **single** balance source of truth (reference stores two)
 - Statement import: correct amount sanitizer, dedup backed by a unique index
 - **One** reconciliation engine using the scoring model (fixes **D-29**)
