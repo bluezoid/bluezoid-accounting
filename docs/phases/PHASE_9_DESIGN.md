@@ -271,3 +271,37 @@ with the difference between them shown where they disagree.
 | **P9-23** | TDS deposited late | **Compute s.201(1A) interest** (1.5% a month or part, from deduction to deposit) per deduction, show it on the challan as due, and flag it in 26Q. Not refused: the deposit is still made. |
 | **P9-24** | 26Q output | **Structured data for Protean's RPU** (the free utility that produces the FVU file), not the FVU text file itself: that format is validated only by Protean's FVU, which we cannot run here. |
 
+---
+
+## 11. P9e detailed design — e-invoice and e-way bill payloads
+
+**Status:** DESIGN — awaiting P9-25…P9-28.
+
+### 11.1 What it does (and never does)
+- Builds the **IRP e-invoice JSON** (schema 1.1) for a posted B2B sales invoice
+  or credit note, and the **e-way bill JSON** (EWB API) for a posted invoice
+  of goods, from the figures stored at posting.
+- **Never fabricates an IRN, acknowledgement, signed QR or e-way bill number.**
+  These come only from the government portals; AccuBook stores them when the
+  user imports the portal's response.
+- Validates before building: buyer GSTIN (B2B), 6-digit PIN codes, HSN on
+  every line, GST unit codes (UQC, not our unit symbols - R-21), seller and
+  buyer addresses. Money as exact decimals, never floats.
+- Part of the `taxation-returns` add-on (B-7). Company address, legal name and
+  PIN become editable (kernel), since both payloads need them.
+
+### 11.2 Findings in the reference
+| ID | Finding |
+|---|---|
+| **R-25** | The e-way bill refuses a consignment below ₹50,000 of **taxable** value. Rule 138 measures the consignment value **including** GST and cess (excluding exempt goods), so ₹45,000 + 18% GST = ₹53,100 is wrongly refused. |
+| — | Both payloads use the unit's own symbol (R-21) and `Number()` money (R-22). |
+
+### 11.3 Decisions required
+
+| ID | Question | Recommendation |
+|---|---|---|
+| **P9-25** | When e-invoicing applies | The user **declares it, from a date** (a company setting, effective-dated): the test is aggregate turnover above ₹5 crore in **any** year since 2017-18, PAN-wide, which one company file cannot know. AccuBook **warns** when the books' own turnover for a year passes the rule pack's limit and no date is declared. |
+| **P9-26** | Cancelling an invoice that has an IRN | The IRP lets an IRN be cancelled only **within 24 hours** of its acknowledgement. Cancelling the invoice in AccuBook is **refused after that window** (issue a credit note instead), and allowed within it with a reminder to cancel the IRN on the portal too. |
+| **P9-27** | When an e-way bill is required | **Advisory, never blocking the payload:** required when the consignment value **including tax** (R-25) exceeds the limit - ₹50,000 inter-state; intra-state the state's limit where the rule pack lists one, else ₹50,000 - for goods (not services). |
+| **P9-28** | Portal responses | **Import the IRP / EWB response JSON** and keep, per document, the IRN, acknowledgement number and date, signed QR, and e-way bill number with its validity - checked to belong to that document (GSTIN, number, date) before it is kept. Never typed in by hand. |
+
