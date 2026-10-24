@@ -7,6 +7,7 @@
 module accubook.ui.api {
     requires transitive accubook.platform;
     requires transitive accubook.module.api;
+    requires transitive accubook.tax;
     requires transitive javafx.controls;
     requires transitive java.sql;
 

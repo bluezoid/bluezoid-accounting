@@ -8,6 +8,7 @@
   <dependencies>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-platform</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-tax</artifactId></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-controls</artifactId><version>${javafx.version}</version></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-graphics</artifactId><version>${javafx.version}</version></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-base</artifactId><version>${javafx.version}</version></dependency>
