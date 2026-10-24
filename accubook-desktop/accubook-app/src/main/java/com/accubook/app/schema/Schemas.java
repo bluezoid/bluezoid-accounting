@@ -88,7 +88,8 @@ public final class Schemas {
                 COMPANY_V6_DOCUMENTS, COMPANY_V7_SETTLEMENT, COMPANY_V8_ORDERS, COMPANY_V9_VALUATION,
                 COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
                 COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS,
-                COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION, COMPANY_V16_TDS_CHALLANS);
+                COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION, COMPANY_V16_TDS_CHALLANS,
+                COMPANY_V17_EINVOICE);
     }
 
     /**
@@ -1838,6 +1839,97 @@ public final class Schemas {
             END;
 
             """ + seedSystemLedger("TDS_INTEREST", "Interest and Fees on TDS", "INDIRECT_EXPENSES"));
+
+    /**
+     * Phase 9e: e-invoices and e-way bills ({@code taxation-returns}).
+     *
+     * <ul>
+     *   <li>{@code einvoice_applicability}: from which date the company must
+     *       e-invoice, as the user declares it (P9-25). Appended, never edited.</li>
+     *   <li>{@code einvoice_record} and {@code eway_bill_record}: what the portals
+     *       returned for a document - IRN, acknowledgement, signed QR; e-way bill
+     *       number and validity - kept with the response it came in (P9-28).
+     *       Never typed in, never generated here.</li>
+     * </ul>
+     */
+    private static final Migration COMPANY_V17_EINVOICE = new Migration(17, "e-invoices and e-way bills", """
+            CREATE TABLE einvoice_applicability (
+                effective_from  TEXT    NOT NULL PRIMARY KEY,
+                applies         INTEGER NOT NULL CHECK (applies IN (0, 1)),
+                created_at      INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE TABLE einvoice_record (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                document_id     TEXT    NOT NULL REFERENCES sales_document (id),
+                irn             TEXT    NOT NULL UNIQUE CHECK (length(irn) = 64),
+                ack_no          TEXT    NOT NULL,
+                -- As the IRP stated it, an instant: the 24-hour cancel window runs from it (P9-26).
+                ack_at          INTEGER NOT NULL,
+                signed_qr       TEXT    NOT NULL,
+                response        TEXT    NOT NULL,
+                response_sha256 TEXT    NOT NULL CHECK (length(response_sha256) = 64),
+                imported_at     INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE UNIQUE INDEX idx_einvoice_record_document ON einvoice_record (document_id);
+
+            CREATE TABLE eway_bill_record (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                document_id     TEXT    NOT NULL REFERENCES sales_document (id),
+                ewb_no          TEXT    NOT NULL UNIQUE CHECK (length(ewb_no) = 12),
+                generated_at    INTEGER NOT NULL,
+                valid_until     INTEGER,
+                response        TEXT    NOT NULL,
+                response_sha256 TEXT    NOT NULL CHECK (length(response_sha256) = 64),
+                imported_at     INTEGER NOT NULL
+            ) STRICT;
+
+            CREATE INDEX idx_eway_bill_record_document ON eway_bill_record (document_id);
+
+            CREATE TRIGGER einvoice_applicability_no_update BEFORE UPDATE ON einvoice_applicability
+            BEGIN
+                SELECT RAISE(ABORT, 'Declare a new date instead of editing one');
+            END;
+
+            CREATE TRIGGER einvoice_applicability_no_delete BEFORE DELETE ON einvoice_applicability
+            BEGIN
+                SELECT RAISE(ABORT, 'Declare a new date instead of deleting one');
+            END;
+
+            CREATE TRIGGER einvoice_record_no_update BEFORE UPDATE ON einvoice_record
+            BEGIN
+                SELECT RAISE(ABORT, 'A portal response is kept as imported');
+            END;
+
+            CREATE TRIGGER einvoice_record_no_delete BEFORE DELETE ON einvoice_record
+            BEGIN
+                SELECT RAISE(ABORT, 'A portal response is kept as imported');
+            END;
+
+            CREATE TRIGGER eway_bill_record_no_update BEFORE UPDATE ON eway_bill_record
+            BEGIN
+                SELECT RAISE(ABORT, 'A portal response is kept as imported');
+            END;
+
+            CREATE TRIGGER eway_bill_record_no_delete BEFORE DELETE ON eway_bill_record
+            BEGIN
+                SELECT RAISE(ABORT, 'A portal response is kept as imported');
+            END;
+
+            -- Only a posted document gets an IRN or an e-way bill.
+            CREATE TRIGGER einvoice_record_posted BEFORE INSERT ON einvoice_record
+            WHEN (SELECT status FROM sales_document WHERE id = NEW.document_id) <> 'POSTED'
+            BEGIN
+                SELECT RAISE(ABORT, 'Only a posted document has an IRN');
+            END;
+
+            CREATE TRIGGER eway_bill_record_posted BEFORE INSERT ON eway_bill_record
+            WHEN (SELECT status FROM sales_document WHERE id = NEW.document_id) <> 'POSTED'
+            BEGIN
+                SELECT RAISE(ABORT, 'Only a posted document has an e-way bill');
+            END;
+            """);
 
     private static String gstPeriodLock(String side, String returnTypes) {
         return """

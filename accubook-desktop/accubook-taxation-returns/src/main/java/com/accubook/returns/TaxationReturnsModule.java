@@ -37,13 +37,14 @@ public final class TaxationReturnsModule implements FeatureModule {
 
     @Override
     public Set<String> ownedTables() {
-        return Set.of("gst_return", "gstr2b_import", "gstr2b_document", "tds_challan", "tds_challan_entry");
+        return Set.of("gst_return", "gstr2b_import", "gstr2b_document", "tds_challan", "tds_challan_entry",
+                "einvoice_applicability", "einvoice_record", "eway_bill_record");
     }
 
-    /** Migration 13 created gst_return; 14 the GSTR-2B imports; 15 its voucher link; 16 TDS deposits. */
+    /** Migration 13 created gst_return; 14 GSTR-2B; 15 voucher links; 16 TDS deposits; 17 e-invoices. */
     @Override
     public int requiredSchemaVersion() {
-        return 16;
+        return 17;
     }
 
     @Override
