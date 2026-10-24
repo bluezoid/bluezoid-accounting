@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28 (2026-10-24).
 
 **Still open:** B-2 · B-5 · I-3, I-6…I-18 · N-2…N-9.
 
@@ -331,6 +331,21 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 >   alone (R-18).
 > - **P9-13:** one TDS Payable and one TDS Receivable ledger; deductions tagged
 >   with their section.
+
+## P9-25…P9-28 · E-invoice and e-way bill — ✅ **APPROVED 2026-10-24**
+
+> As recommended in `PHASE_9_DESIGN.md` §11.3.
+>
+> - **P9-25:** the user declares the date e-invoicing applies from
+>   (effective-dated); AccuBook warns when the books' turnover passes the limit
+>   with no date declared.
+> - **P9-26:** an invoice with an IRN can be cancelled only within 24 hours of
+>   its acknowledgement; after that, a credit note.
+> - **P9-27:** e-way bill requirement is advisory, on consignment value
+>   including tax (R-25): ₹50,000 inter-state; intra-state the state's limit
+>   from the rule pack, else ₹50,000; goods only.
+> - **P9-28:** IRN, acknowledgement, signed QR and e-way bill number come only
+>   from imported portal responses, checked against the document.
 
 ## P9-20…P9-24 · CMP-08, GSTR-9, TDS deposits — ✅ **APPROVED 2026-10-13**
 

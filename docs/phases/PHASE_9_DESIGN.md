@@ -275,7 +275,7 @@ with the difference between them shown where they disagree.
 
 ## 11. P9e detailed design — e-invoice and e-way bill payloads
 
-**Status:** DESIGN — awaiting P9-25…P9-28.
+**Status:** APPROVED 2026-10-24 (P9-25…P9-28 as recommended).
 
 ### 11.1 What it does (and never does)
 - Builds the **IRP e-invoice JSON** (schema 1.1) for a posted B2B sales invoice
