@@ -29,6 +29,7 @@ class RulePackTest {
             2025-09-22||0,0.25,3,5,18,40
             [thresholds]
             B2CL_INVOICE|2017-07-01||250000
+            EWAY_BILL|2018-04-01||50000
             COMPOSITION_LIMIT|2019-04-01||15000000
             COMPOSITION_LIMIT_SPECIAL_STATES|2019-04-01||7500000
             [tds]
@@ -45,6 +46,8 @@ class RulePackTest {
             [composition-rates]
             TRADER|2019-04-01||1|TAXABLE
             RESTAURANT|2019-04-01||5|TURNOVER
+            [eway-intra-state]
+            38|2018-04-01||100000
             """;
 
     @Test
@@ -145,5 +148,15 @@ class RulePackTest {
                 .hasMessageContaining("no composition rate for SERVICES");
         assertThatThrownBy(() -> RulePack.parse(SAMPLE.replace("RESTAURANT|2019-04-01||5", "TRADER|2020-04-01||5")))
                 .hasMessageContaining("in force at once");
+    }
+
+    @Test
+    @DisplayName("P9-27: e-way limit is national inter-state; intra-state the state's own where listed")
+    void ewayLimits() {
+        RulePack pack = RulePack.parse(SAMPLE);
+        LocalDate on = LocalDate.of(2026, 5, 1);
+        assertThat(pack.ewayBillLimit("27", "38", on)).isEqualByComparingTo("50000");
+        assertThat(pack.ewayBillLimit("38", "38", on)).isEqualByComparingTo("100000");
+        assertThat(pack.ewayBillLimit("27", "27", on)).as("not listed: national").isEqualByComparingTo("50000");
     }
 }

@@ -39,6 +39,8 @@ import java.util.Optional;
  * NOS|Numbers
  * [composition-rates]
  * TRADER|2019-04-01||1|TAXABLE
+ * [eway-intra-state]
+ * 27|2018-04-01||100000
  * </pre>
  * Fields are separated by {@code |}; an empty "to" date means still in force.
  * Parsing is strict: anything unexpected is refused with its line number, because
@@ -47,7 +49,15 @@ import java.util.Optional;
 public record RulePack(String version, LocalDate issued, String status, List<String> sources,
                        List<StateCode> states, List<GstSlabs> gstSlabs, List<Threshold> thresholds,
                        List<WithholdingSection> withholding, List<DatedState> compositionSpecialStates,
-                       List<Uqc> uqcs, List<CompositionRate> compositionRates) {
+                       List<Uqc> uqcs, List<CompositionRate> compositionRates,
+                       List<StateLimit> ewayIntraStateLimits) {
+
+    /** A state's own limit for something, between two dates - e.g. its intra-state e-way bill limit. */
+    public record StateLimit(String code, LocalDate from, LocalDate to, BigDecimal limit) {
+        public boolean appliesOn(LocalDate date) {
+            return !date.isBefore(from) && (to == null || !date.isAfter(to));
+        }
+    }
 
     /** A GST unit quantity code, as the returns' HSN summary must use (P9-16). */
     public record Uqc(String code, String description) {
@@ -71,6 +81,21 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
         compositionSpecialStates = List.copyOf(compositionSpecialStates);
         uqcs = List.copyOf(uqcs);
         compositionRates = List.copyOf(compositionRates);
+        ewayIntraStateLimits = List.copyOf(ewayIntraStateLimits);
+    }
+
+    /**
+     * P9-27: the consignment value above which goods need an e-way bill - the
+     * national limit inter-state; intra-state the state's own where the pack
+     * lists one, else the national limit.
+     */
+    public BigDecimal ewayBillLimit(String fromState, String toState, LocalDate date) {
+        BigDecimal national = threshold("EWAY_BILL", date);
+        if (!fromState.equals(toState)) {
+            return national;
+        }
+        return ewayIntraStateLimits.stream().filter(l -> l.code().equals(fromState) && l.appliesOn(date))
+                .map(StateLimit::limit).findFirst().orElse(national);
     }
 
     /** P9-20: a composition category's rate and base on {@code date}. */
@@ -145,6 +170,7 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
         List<DatedState> special = new ArrayList<>();
         List<Uqc> uqcs = new ArrayList<>();
         List<CompositionRate> compositionRates = new ArrayList<>();
+        List<StateLimit> ewayLimits = new ArrayList<>();
         String section = null;
 
         String[] lines = text.split("\n", -1);
@@ -159,7 +185,7 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
                     section = line.substring(1, line.length() - 1);
                     if (!List.of("states", "gst-slabs", "thresholds", "tds", "tcs",
                             "composition-special-states", "uqc",
-                            "composition-rates").contains(section)) {
+                            "composition-rates", "eway-intra-state").contains(section)) {
                         throw new RulePackException("unknown section [" + section + "]");
                     }
                     continue;
@@ -195,6 +221,11 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
                     case "thresholds" -> {
                         expect(f, 4);
                         thresholds.add(new Threshold(required(f[0], "key"), date(f[1]), optionalDate(f[2]),
+                                new BigDecimal(f[3])));
+                    }
+                    case "eway-intra-state" -> {
+                        expect(f, 4);
+                        ewayLimits.add(new StateLimit(required(f[0], "state"), date(f[1]), optionalDate(f[2]),
                                 new BigDecimal(f[3])));
                     }
                     case "composition-rates" -> {
@@ -236,7 +267,7 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
         }
         RulePack pack = new RulePack(version, date(required(header.get("issued"), "issued")),
                 required(header.get("status"), "status"), sources, states, slabs, thresholds, withholding, special,
-                uqcs, compositionRates);
+                uqcs, compositionRates, ewayLimits);
         pack.requireNoOverlaps();
         return pack;
     }
@@ -253,6 +284,8 @@ public record RulePack(String version, LocalDate issued, String status, List<Str
         if (states.stream().map(StateCode::code).distinct().count() != states.size()) {
             throw new RulePackException("A state code appears twice");
         }
+        checkOverlaps("e-way bill state limit", ewayIntraStateLimits.stream()
+                .map(l -> new Object[]{l.code(), l.from(), l.to()}).toList());
         checkOverlaps("composition rate", compositionRates.stream()
                 .map(r -> new Object[]{r.category().name(), r.from(), r.to()}).toList());
         if (uqcs.stream().map(Uqc::code).distinct().count() != uqcs.size()) {
