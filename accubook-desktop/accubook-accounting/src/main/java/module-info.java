@@ -22,4 +22,5 @@ module accubook.accounting {
     exports com.accubook.accounting.chart;
     exports com.accubook.accounting.party;
     exports com.accubook.accounting.year;
+    exports com.accubook.accounting.report;
 }
