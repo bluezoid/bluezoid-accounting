@@ -7,7 +7,7 @@ metadata:
 
 # Project state — read this first
 
-**Updated:** 2026-10-12
+**Updated:** 2026-10-24
 
 ## Where we are
 **Phases 0–6 COMPLETE. Phase 7 IN PROGRESS (started 2026-10-09).**
@@ -76,11 +76,19 @@ ledgers), 16 (tds_challan(+_entry), TDS_INTEREST ledger). Pack 2025.10.4
 (composition rates). returns module: JsonReader, Gstr2bFile/Reconciler, Cmp08*,
 Gstr9*, TdsInterest, TdsDeposits (26Q/16A as RPU data), uses posting core.
 register(COMPOSITION) now needs a CompositionCategory. Tan API in tax module.
-R-22..R-24. **NEXT: P9e** e-invoice / e-way bill payloads (never fake IRN),
-then Phase 9 exit + ROADMAP update; then Phase 10 banking.
+R-22..R-24.
+**PHASE 9 COMPLETE (2026-10-24).** P9e: CompanyIdentity (tax), rule-pack
+[eway-intra-state] (empty), migration 17 (einvoice_applicability,
+einvoice_record, eway_bill_record), EInvoices (IRP 1.1 + EWB payloads, import
+responses checked vs document, never generated), IRN 24h cancel window in
+DocumentEngine. Decisions P9-25..28. Open: P9-29 (194C(6) transporters).
+Exit criterion met in substance (134 GST + 40 TDS tests written, not ported).
+**NEXT: Phase 10 banking** (single balance source, statement import with
+correct sanitiser + unique-index dedup, one reconciliation engine, D-29) -
+research reference, design, ask decisions. Still: V-1 gate; screens missing.
 NOTE: roadmap has NO phase for screens - biggest remaining item (told user).
 
-Suite: **793 passing, 0 failing** with UI on Xvfb (784 + 9 UI skipped default).
+Suite: **805 passing, 0 failing** with UI on Xvfb (796 + 9 UI skipped default).
 Worktree trick to verify a committed intermediate state: `git worktree add
 --detach <scratch> HEAD` then `mvn -o -q clean verify` there, then remove.
 UI: `xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true`.
