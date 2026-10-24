@@ -13,6 +13,7 @@ module accubook.ui.shell {
     requires accubook.app;
     requires accubook.accounting;
     requires accubook.module.api;
+    requires accubook.ui.api;
     requires javafx.controls;
     requires javafx.graphics;
     requires java.sql;

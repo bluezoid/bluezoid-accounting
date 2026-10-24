@@ -4,6 +4,7 @@ import com.accubook.accounting.chart.FiscalYear;
 import com.accubook.accounting.chart.TrialBalance;
 import com.accubook.accounting.chart.TrialBalanceQuery;
 import com.accubook.accounting.chart.TrialBalanceRow;
+import com.accubook.ui.api.AmountFormat;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;

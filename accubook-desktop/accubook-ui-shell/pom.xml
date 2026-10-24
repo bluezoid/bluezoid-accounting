@@ -10,6 +10,7 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-app</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-accounting</artifactId></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-module-api</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-ui-api</artifactId></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-controls</artifactId><version>${javafx.version}</version></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-graphics</artifactId><version>${javafx.version}</version></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-base</artifactId><version>${javafx.version}</version></dependency>

@@ -29,6 +29,7 @@
     <module>accubook-taxation-returns</module>
     <module>accubook-banking</module>
     <module>accubook-integration-tests</module>
+    <module>accubook-ui-api</module>
     <module>accubook-ui-shell</module>
     <module>accubook-launcher</module>
   </modules>
@@ -64,6 +65,11 @@
       <dependency>
         <groupId>com.accubook</groupId>
         <artifactId>accubook-module-api</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.accubook</groupId>
+        <artifactId>accubook-ui-api</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

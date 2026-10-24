@@ -1,4 +1,4 @@
-package com.accubook.ui.shell;
+package com.accubook.ui.api;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
