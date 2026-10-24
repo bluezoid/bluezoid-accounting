@@ -237,3 +237,34 @@ the upsert and receives the other ledger's id.
 Create a customer named exactly like an existing ledger, post an invoice, and
 inspect which ledger the voucher debits.
 
+---
+
+## R-26 — Bank statement amounts that cannot be read are imported as zero 🔴 *(added 2026-10-24)*
+
+### What happens
+`tryParseAmount` removes characters with the class `[,\s₹INR]` - every comma,
+space, rupee sign and **every letter I, N or R** - then drops brackets. A cell
+"500.00 Dr" becomes "500.00D", which is not a number, and the function returns
+**0** without error. "(500.00)", a bank's way of writing a negative, becomes
++500.00.
+
+### Evidence
+`src/backend/services/banking/statement-import.ts:76-86`.
+
+### Suggested check
+Import a statement with a cell "500.00 Dr" and look at the imported amount.
+
+---
+
+## R-27 — Identical statement lines collapse into one 🟠 *(added 2026-10-24)*
+
+### What happens
+Duplicates are detected in application code by (account, date, amounts,
+reference, narration), without the running balance and without a unique
+index. Two genuine identical lines on one day - two SMS charges - are treated
+as one, and two imports at the same moment can both insert.
+
+### Evidence
+`src/backend/services/banking/statement-import.ts` (dedup by key, lines 266-304);
+no unique index on `bank_transactions`.
+
