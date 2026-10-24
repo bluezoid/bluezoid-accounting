@@ -12,5 +12,26 @@
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-controls</artifactId><version>${javafx.version}</version></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-graphics</artifactId><version>${javafx.version}</version></dependency>
     <dependency><groupId>org.openjfx</groupId><artifactId>javafx-base</artifactId><version>${javafx.version}</version></dependency>
+    <dependency><groupId>org.testfx</groupId><artifactId>testfx-junit5</artifactId><scope>test</scope></dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <!-- The controls' tests need a display; see accubook-ui-shell/pom.xml. -->
+          <argLine>
+            --add-exports javafx.graphics/com.sun.glass.ui=ALL-UNNAMED
+            --add-opens javafx.graphics/com.sun.javafx.application=ALL-UNNAMED
+          </argLine>
+          <systemPropertyVariables>
+            <testfx.robot>glass</testfx.robot>
+            <prism.order>sw</prism.order>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
