@@ -19,4 +19,6 @@ module accubook.ui.shell {
     requires java.sql;
 
     exports com.accubook.ui.shell;
+
+    uses com.accubook.ui.api.ScreenProvider;
 }

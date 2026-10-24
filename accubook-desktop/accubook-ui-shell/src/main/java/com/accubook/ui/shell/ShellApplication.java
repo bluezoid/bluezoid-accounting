@@ -1,34 +1,26 @@
 package com.accubook.ui.shell;
 
 import com.accubook.accounting.chart.FiscalYear;
-import com.accubook.accounting.chart.TrialBalance;
 import com.accubook.accounting.chart.TrialBalanceQuery;
 import com.accubook.app.company.Company;
 import com.accubook.app.company.CompanyService;
+import com.accubook.ui.api.ScreenProvider;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
-import javafx.geometry.Insets;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.ListView;
-import javafx.scene.control.TextField;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.ServiceLoader;
 
 /**
- * The Phase 1 walking skeleton.
- *
- * <p>Deliberately minimal, but it exercises every risk the phase exists to
- * retire: JPMS wiring, JavaFX startup from a linked runtime, SQLite pragmas, the
- * money boundary, migration on open, per-company isolation, and the UI-thread
- * rule.
+ * The application: a company picker, then the main window for the open
+ * company, whose screens come from the kernel and from whichever feature
+ * modules this build contains (Phase 11S).
  *
  * <h2>The UI-thread rule</h2>
  * JavaFX has one UI thread. Blocking it on a query freezes the window, and on a
@@ -58,55 +50,21 @@ public final class ShellApplication extends Application {
     }
 
     private CompanyService companyService;
-
-    private final ListView<String> companyList = new ListView<>();
-    private final Label statusLabel = new Label("Starting...");
-    private final Label totalLabel = new Label("Total: -");
-    private final TextField companyNameField = new TextField();
+    private Stage stage;
+    private CompanyPicker picker;
+    private ScreenCatalogue catalogue;
+    private final Clock clock = Clock.systemDefaultZone();
 
     @Override
     public void start(Stage stage) {
-        BorderPane root = new BorderPane();
-        root.setPadding(new Insets(16));
-        root.setTop(header());
-        root.setCenter(companyList);
-        root.setBottom(controls());
-
+        this.stage = stage;
+        picker = new CompanyPicker(() -> LocalDate.now(clock), this::openCompany, this::createCompany);
         stage.setTitle("AccuBook Desktop");
-        stage.setScene(new Scene(root, 720, 520));
+        stage.setScene(new Scene(picker, 1100, 720));
         stage.setOnCloseRequest(event -> shutdown());
         stage.show();
 
         startServiceInBackground();
-    }
-
-    private VBox header() {
-        Label title = new Label("AccuBook Desktop");
-        title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
-        VBox box = new VBox(4, title, statusLabel, totalLabel);
-        box.setPadding(new Insets(0, 0, 12, 0));
-        return box;
-    }
-
-    private VBox controls() {
-        companyNameField.setPromptText("New company name");
-        Button createButton = new Button("Create company");
-        createButton.setId("createCompanyButton");
-        createButton.setOnAction(event -> createCompany(companyNameField.getText()));
-
-        Button trialBalanceButton = new Button("Trial balance");
-        trialBalanceButton.setId("trialBalanceButton");
-        trialBalanceButton.setOnAction(event -> showTrialBalance());
-
-        companyList.setId("companyList");
-        companyList.getSelectionModel().selectedIndexProperty().addListener(
-                (obs, oldIndex, newIndex) -> openSelected(newIndex.intValue()));
-
-        HBox createRow = new HBox(8, companyNameField, createButton);
-        HBox actionRow = new HBox(8, trialBalanceButton);
-        VBox box = new VBox(8, createRow, actionRow);
-        box.setPadding(new Insets(12, 0, 0, 0));
-        return box;
     }
 
     /**
@@ -121,84 +79,60 @@ public final class ShellApplication extends Application {
     private void startServiceInBackground() {
         runAsync("Opening application data", () -> {
             companyService = serviceFactory.create();
+            catalogue = ScreenCatalogue.of(providers(), companyService.moduleStates());
             return companyService.companies();
         }, companies -> {
-            showCompanies(companies);
-            status("Ready. " + companies.size() + " company(ies).");
+            picker.show(companies);
+            status(companies.isEmpty() ? "Ready. Create your first company below."
+                    : "Ready. " + companies.size() + " company(ies).");
         });
     }
 
-    private void createCompany(String name) {
-        if (name == null || name.isBlank()) {
-            status("Enter a company name first.");
-            return;
-        }
+    /** The kernel's screens and every module's present in this build - never named here. */
+    private static List<ScreenProvider> providers() {
+        List<ScreenProvider> providers = new ArrayList<>();
+        providers.add(new KernelScreens());
+        ServiceLoader.load(ScreenProvider.class).forEach(providers::add);
+        return providers;
+    }
+
+    private void createCompany(CompanyPicker.NewCompany request) {
         runAsync("Creating company", () -> {
-            companyService.createCompany(name.strip());
+            companyService.createCompany(request.name(), request.fiscalYearStartMonth(), request.booksFrom());
             return companyService.companies();
         }, companies -> {
-            companyNameField.clear();
-            showCompanies(companies);
-            status("Created '" + name.strip() + "'.");
+            picker.clearForm();
+            picker.show(companies);
+            status("Created '" + request.name() + "'. Select it and press Open.");
         });
     }
 
-    private void openSelected(int index) {
-        if (index < 0) {
-            return;
-        }
-        runAsync("Opening company", () -> {
-            List<Company> companies = companyService.companies();
-            Company company = companies.get(index);
+    /** Open a company and its working year, then show the main window. */
+    private void openCompany(Company company) {
+        runAsync("Opening " + company.name(), () -> {
             companyService.openCompany(company.id());
-            return companyService.chartOfAccounts().size();
-        }, ledgerCount -> {
-            totalLabel.setText("Chart of accounts: " + ledgerCount + " ledgers");
-            status("Company open.");
+            return companyService.readOpenCompany(TrialBalanceQuery::fiscalYears);
+        }, years -> {
+            FiscalYear year = MainWindow.workingYear(years, LocalDate.now(clock));
+            MainWindow window = new MainWindow(companyService, catalogue, clock, year, this::showPicker);
+            stage.getScene().setRoot(window);
+            window.installShortcuts(stage.getScene());
+            stage.setTitle("AccuBook Desktop - " + company.name());
         });
     }
 
-    /**
-     * Open the trial balance for the open company (P6-4).
-     *
-     * <p>A window of its own, so it can stay open beside the shell. It reads
-     * through {@link CompanyService#readOpenCompany}, which hands out a
-     * connection that cannot write - the screen is read-only by construction,
-     * not by the absence of buttons.
-     */
-    private void showTrialBalance() {
-        if (companyService == null || companyService.currentCompany().isEmpty()) {
-            status("Open a company first.");
-            return;
-        }
-        String companyName = companyService.currentCompany().get().name();
-        TrialBalanceView view = new TrialBalanceView(new TrialBalanceView.Source() {
-            @Override
-            public List<FiscalYear> fiscalYears() throws Exception {
-                return companyService.readOpenCompany(TrialBalanceQuery::fiscalYears);
-            }
-
-            @Override
-            public TrialBalance trialBalance(String fiscalYearId) throws Exception {
-                return companyService.readOpenCompany(
-                        connection -> TrialBalanceQuery.compute(connection, fiscalYearId));
-            }
-        }, LocalDate.now());
-        Stage window = new Stage();
-        window.setTitle("Trial balance - " + companyName);
-        window.setScene(new Scene(view, 760, 560));
-        window.show();
-        status("Trial balance opened.");
-    }
-
-    private void showCompanies(List<Company> companies) {
-        companyList.getItems().setAll(companies.stream()
-                .map(c -> c.name() + "   (schema v" + c.schemaVersion() + ")")
-                .toList());
+    private void showPicker() {
+        stage.getScene().getAccelerators().clear();
+        stage.getScene().setRoot(picker);
+        stage.setTitle("AccuBook Desktop");
+        runAsync("Listing companies", () -> companyService.companies(), list -> {
+            picker.show(list);
+            status("Ready.");
+        });
     }
 
     private void status(String message) {
-        statusLabel.setText(message);
+        picker.status(message);
     }
 
     /**
