@@ -8,7 +8,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
 B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28 (2026-10-24).
 
-**Still open:** B-2 · B-5 · I-3, I-6…I-18 · N-2…N-9.
+**Still open:** B-2 · B-5 · P9-29 · I-3, I-6…I-18 · N-2…N-9.
 
 ## Classification
 
@@ -331,6 +331,15 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 >   alone (R-18).
 > - **P9-13:** one TDS Payable and one TDS Receivable ledger; deductions tagged
 >   with their section.
+
+## P9-29 · Transport contractors under s.194C(6) — 🟡 **OPEN**
+
+> No TDS is deducted on payments to a contractor in the business of plying,
+> hiring or leasing goods carriages who owns ten or fewer and gives a
+> declaration with PAN. AccuBook has no way to record that declaration, so such
+> a contractor is taxed at 194C rates. Options: a dated declaration on the
+> party (with the document kept), checked at posting; or a 0% 194C variant in
+> the rule pack chosen per bill. Not blocking; decide before the TDS screens.
 
 ## P9-25…P9-28 · E-invoice and e-way bill — ✅ **APPROVED 2026-10-24**
 
