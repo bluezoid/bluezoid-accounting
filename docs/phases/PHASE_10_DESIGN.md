@@ -1,6 +1,6 @@
 # Phase 10 Design — Banking and bank reconciliation
 
-**Status:** DESIGN — awaiting P10-1…P10-5
+**Status:** APPROVED 2026-10-24 (P10-1…P10-5 as recommended)
 **Module:** `banking` (Professional and Enterprise; B-7: "reconciliation is a
 step up"). Posts to the ledger; removal never deletes its vouchers.
 

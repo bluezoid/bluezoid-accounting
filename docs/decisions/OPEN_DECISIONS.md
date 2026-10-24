@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28 (2026-10-24).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28, P10-1…P10-5 (2026-10-24).
 
 **Still open:** B-2 · B-5 · P9-29 · I-3, I-6…I-18 · N-2…N-9.
 
@@ -331,6 +331,23 @@ is P6/P7 and depends on B-1. **Depends on it:** Phase 5, Phase 6.
 >   alone (R-18).
 > - **P9-13:** one TDS Payable and one TDS Receivable ledger; deductions tagged
 >   with their section.
+
+## P10-1…P10-5 · Phase 10 banking — ✅ **APPROVED 2026-10-24**
+
+> As recommended in `PHASE_10_DESIGN.md` §4.
+>
+> - **P10-1:** CSV statements (HDFC, ICICI, SBI, Axis, user-mapped generic);
+>   Excel later.
+> - **P10-2:** line identity (incl. running balance and same-day occurrence)
+>   under a unique index; an unreadable row or a running-balance break refuses
+>   the file.
+> - **P10-3:** matches are suggested and confirmed by the user; "confirm all
+>   certain" only for unique exact-amount + exact-reference matches.
+> - **P10-4:** charges and interest posted from the statement line to a ledger
+>   the user chooses; no ledgers seeded; last ledger used is suggested.
+> - **P10-5:** per account, a reconciliation start date and statement balance;
+>   earlier entries not offered; the start is fixed once anything after it is
+>   matched.
 
 ## P9-29 · Transport contractors under s.194C(6) — 🟡 **OPEN**
 
