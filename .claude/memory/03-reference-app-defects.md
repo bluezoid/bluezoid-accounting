@@ -56,3 +56,5 @@ appears to test.
 - R-18 (P9c): reference TDS on annual-threshold crossing deducts only on the crossing bill; earlier below-threshold bills of the year never bear TDS. Also never rounds TDS.
 - R-22: 2B money via Number() floats. R-23 (suspected): reads idt/iamt names from 2B (2B uses dt/igst). R-24: CMP-08 composition tax on all turnover for traders; rate undated.
 - R-25: e-way bill refused below 50,000 of TAXABLE value; rule 138 counts value WITH tax.
+- R-26: bank amount sanitizer strips I/N/R chars and brackets; unreadable -> 0.
+- R-27: bank dedup in app code, no running balance, no unique index; identical lines collapse.

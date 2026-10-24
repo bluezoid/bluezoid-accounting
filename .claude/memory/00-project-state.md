@@ -83,12 +83,17 @@ einvoice_record, eway_bill_record), EInvoices (IRP 1.1 + EWB payloads, import
 responses checked vs document, never generated), IRN 24h cancel window in
 DocumentEngine. Decisions P9-25..28. Open: P9-29 (194C(6) transporters).
 Exit criterion met in substance (134 GST + 40 TDS tests written, not ported).
-**NEXT: Phase 10 banking** (single balance source, statement import with
-correct sanitiser + unique-index dedup, one reconciliation engine, D-29) -
-research reference, design, ask decisions. Still: V-1 gate; screens missing.
+**PHASE 10 COMPLETE (2026-10-24).** P10-1..5. Migration 18 (bank_account w/o
+balance, bank_statement_import/line unique (ledger_id, identity), bank_match(+_line,
+_entry) with active flags). accubook-banking: StatementParser (R-26 fix),
+Banking (import, suggestions, confirm, confirmAllCertain, unmatch,
+postFromLine, statement=BRS). R-26, R-27 in defect report.
+**NEXT: Phase 11** year-end closing + financial reporting (B-2 closing voucher,
+I-16 reopen policy are OPEN - ask first). Mutation runs: use `mvn clean` on the
+test module (IDE trap struck again 2026-10-24).
 NOTE: roadmap has NO phase for screens - biggest remaining item (told user).
 
-Suite: **805 passing, 0 failing** with UI on Xvfb (796 + 9 UI skipped default).
+Suite: **820 passing, 0 failing** with UI on Xvfb (811 + 9 UI skipped default).
 Worktree trick to verify a committed intermediate state: `git worktree add
 --detach <scratch> HEAD` then `mvn -o -q clean verify` there, then remove.
 UI: `xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true`.
