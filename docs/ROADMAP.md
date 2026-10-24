@@ -245,8 +245,8 @@ note **reduces** revenue and receivables.
 **Exit:** valuation reproducible for any historical date (fixes **D-24**);
 stock ledger and trial balance agree (fixes **D-25**).
 
-## Phase 9 — Indian taxation
-**Blocked by: B-4 (GST rounding), I-6 (TDS surcharge base), I-7 (PT states)**
+## Phase 9 — Indian taxation ✅ COMPLETE 2026-10-24 (see `phases/PHASE_9_REPORT.md`; I-6/I-7 moved to P15; content still gated by V-1)
+**Was blocked by: B-4 (GST rounding, decided), I-6 (TDS surcharge base), I-7 (PT states) — both payroll, P15**
 
 - **Effective-dated rule-pack infrastructure first** — the key structural fix
 - GST computation, place of supply, composition
@@ -256,6 +256,10 @@ stock ledger and trial balance agree (fixes **D-25**).
 - Unified state-code table; GSTIN checksum wired up
 
 **Exit:** ~124 GST and ~75 TDS/TCS ported tests green.
+*Met in substance, not by count:* tests were written afresh against the law,
+not ported (the reference's tables are stale, R-17). 134 GST and 40 TDS/TCS
+tests; every reference TDS case reviewed and either covered or recorded as a
+gap (194C(6) transporters, P9-29; Form 27D).
 
 ## Phase 10 — Banking + reconciliation
 - Bank accounts with a **single** balance source of truth (reference stores two)
