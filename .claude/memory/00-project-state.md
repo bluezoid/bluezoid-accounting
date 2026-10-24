@@ -88,12 +88,17 @@ balance, bank_statement_import/line unique (ledger_id, identity), bank_match(+_l
 _entry) with active flags). accubook-banking: StatementParser (R-26 fix),
 Banking (import, suggestions, confirm, confirmAllCertain, unmatch,
 postFromLine, statement=BRS). R-26, R-27 in defect report.
-**NEXT: Phase 11** year-end closing + financial reporting (B-2 closing voucher,
-I-16 reopen policy are OPEN - ask first). Mutation runs: use `mvn clean` on the
-test module (IDE trap struck again 2026-10-24).
+**PHASE 11 COMPLETE (2026-10-24).** B-2 (closing voucher + lock), I-16
+(reopen latest, reason), P11-1 (opening voucher), P11-2 (direct cash flow).
+Migrations 19 (year triggers, fiscal_year_event, ledger opening cols retired),
+20 (cash_flow_activity). accounting: `year/` FiscalYears, `report/`
+FinancialStatements, Registers, Table, TableExport (CSV defuses = + - @).
+Kernel postings use FiscalYears.ACCOUNTING. Order entries by v.rowid, not id.
+**NEXT: Phase 12** backup/cloud (I-14 key custody OPEN - ask first).
+Mutation runs: use `mvn clean` on the test module (IDE trap struck again).
 NOTE: roadmap has NO phase for screens - biggest remaining item (told user).
 
-Suite: **820 passing, 0 failing** with UI on Xvfb (811 + 9 UI skipped default).
+Suite: **841 passing, 0 failing** with UI on Xvfb (832 + 9 UI skipped default).
 Worktree trick to verify a committed intermediate state: `git worktree add
 --detach <scratch> HEAD` then `mvn -o -q clean verify` there, then remove.
 UI: `xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true`.

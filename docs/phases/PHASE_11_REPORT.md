@@ -41,9 +41,8 @@
   1,00,000 → 70,000 → 65,000 → 57,000; sales register 50,000 − 5,000 note.
 - `TableExportTest` (5): CSV quoting and formula guard, JSON escaping, XLSX
   parts, date serials (1 April 2026 = 46113), A1 references past Z.
-- Mutations caught: P11c — credit-note sign, brought-forward boundary,
+- Mutations caught (P11c): credit-note sign, brought-forward boundary,
   running-balance credit, formula guard, XML quote escape, date epoch.
-  P11a/b mutations recorded in the log.
 - `./build.sh --plan basic`: launched on Xvfb for 25 s, no exception.
 
 ## Found on the way
