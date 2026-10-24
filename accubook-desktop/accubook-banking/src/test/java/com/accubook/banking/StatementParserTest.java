@@ -99,4 +99,20 @@ class StatementParserTest {
         assertThat(StatementParser.rows("a,\"b \"\"q\"\"\nc\",d\r\ne,f")).containsExactly(
                 List.of("a", "b \"q\"\nc", "d"), List.of("e", "f"));
     }
+
+    @Test
+    @DisplayName("P10-1: a layout the user maps - here a co-operative bank's columns, with no reference and no balance")
+    void generic() {
+        StatementLayout mapped = new StatementLayout("Saraswat", "Value Date", "Particulars", null, "Paid Out",
+                "Paid In", null, List.of("yyyy-MM-dd"));
+
+        List<StatementLine> lines = StatementParser.parse("""
+                Value Date,Particulars,Paid Out,Paid In
+                2026-05-02,RTGS FROM MEHTA,,"2,50,000.00"
+                2026-05-03,ATM WDL,"10,000",
+                """, mapped);
+
+        assertThat(lines).extracting(StatementLine::net).containsExactly(d("250000.00"), d("-10000"));
+        assertThat(lines).allMatch(l -> l.reference() == null && l.balance() == null);
+    }
 }
