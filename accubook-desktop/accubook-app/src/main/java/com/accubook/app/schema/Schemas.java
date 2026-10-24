@@ -89,7 +89,8 @@ public final class Schemas {
                 COMPANY_V10_GST_REGISTRATION, COMPANY_V11_GST_ON_DOCUMENTS,
                 COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS,
                 COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION, COMPANY_V16_TDS_CHALLANS,
-                COMPANY_V17_EINVOICE, COMPANY_V18_BANKING, COMPANY_V19_YEAR_END);
+                COMPANY_V17_EINVOICE, COMPANY_V18_BANKING, COMPANY_V19_YEAR_END,
+                COMPANY_V20_CASH_FLOW);
     }
 
     /**
@@ -2169,6 +2170,20 @@ public final class Schemas {
             BEGIN
                 SELECT RAISE(ABORT, 'Opening balances are entered as the opening voucher');
             END;
+            """);
+
+    /**
+     * Phase 11b: how each ledger group's cash movements are classified in the
+     * cash flow statement (P11-2). Only the user's changes are stored; a group
+     * without a row takes the default - investing for fixed assets, financing
+     * for loans and capital, operating for the rest. Kernel.
+     */
+    private static final Migration COMPANY_V20_CASH_FLOW = new Migration(20, "cash flow classification", """
+            CREATE TABLE cash_flow_activity (
+                group_id    TEXT    NOT NULL PRIMARY KEY REFERENCES ledger_group (id),
+                activity    TEXT    NOT NULL CHECK (activity IN ('OPERATING', 'INVESTING', 'FINANCING')),
+                updated_at  INTEGER NOT NULL
+            ) STRICT;
             """);
 
     private static String gstPeriodLock(String side, String returnTypes) {
