@@ -102,6 +102,8 @@ is_included() {
   done
   for candidate in "${PLAN_MODULES[@]:-}"; do
     [[ "$artifact" == "accubook-${candidate}" ]] && return 0
+    # A feature's screens ship exactly when the feature does (Phase 11S).
+    [[ "$artifact" == "accubook-ui-${candidate}" ]] && return 0
   done
   return 1
 }
