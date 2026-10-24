@@ -387,6 +387,7 @@ public final class DocumentEngine {
                 throw new TradeException("Only a posted document can be cancelled; this one is " + doc.status);
             }
             requireGstPeriodOpen(connection, doc, "cancel");
+            requireIrnCancellable(connection, doc);
             try (PreparedStatement ps = connection.prepareStatement("SELECT number FROM " + documents
                     + " WHERE original_document_id = ? AND status = 'POSTED' LIMIT 1")) {
                 ps.setString(1, documentId);
@@ -1158,6 +1159,28 @@ public final class DocumentEngine {
                             + rows.getString(2) + " to "
                             + rows.getString(3) + " is filed. Correct it with a "
                             + label(doc.kind.isNote() ? doc.kind : doc.kind.note()) + " in an open period.");
+                }
+            }
+        }
+    }
+
+    /**
+     * P9-26: the IRP cancels an IRN only within 24 hours of acknowledging it.
+     * After that the invoice stands on the portal, so it is corrected with a
+     * credit note, not cancelled here. Within the window it may be cancelled;
+     * the IRN must then be cancelled on the IRP as well.
+     */
+    private void requireIrnCancellable(Connection connection, Header doc) throws SQLException {
+        if (side != DocumentKind.Side.SALES) {
+            return;
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT irn, ack_at FROM einvoice_record WHERE document_id = ?")) {
+            ps.setString(1, doc.id);
+            try (ResultSet rows = ps.executeQuery()) {
+                if (rows.next() && clock.millis() > rows.getLong(2) + 24L * 60 * 60 * 1000) {
+                    throw new TradeException(doc.number + " has an IRN acknowledged more than 24 hours ago; the "
+                            + "IRP no longer cancels it. Correct it with a credit note.");
                 }
             }
         }
