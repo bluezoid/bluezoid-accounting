@@ -1,6 +1,8 @@
 package com.accubook.accounting.chart;
 
+import com.accubook.module.ModuleTransactions;
 import com.accubook.persistence.connection.Database;
+import com.accubook.platform.id.Ids;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -21,10 +23,32 @@ import java.util.Optional;
  */
 public final class ChartOfAccounts {
 
-    private final Database database;
+    private final ModuleTransactions transactions;
 
+    /** Over the guarded transactions the UI and modules are given; they hold no {@code Database}. */
+    public ChartOfAccounts(ModuleTransactions transactions) {
+        this.transactions = Objects.requireNonNull(transactions, "transactions");
+    }
+
+    /** For kernel code that does hold a {@code Database}. */
     public ChartOfAccounts(Database database) {
-        this.database = Objects.requireNonNull(database, "database");
+        this(over(Objects.requireNonNull(database, "database")));
+    }
+
+    private static ModuleTransactions over(Database database) {
+        return new ModuleTransactions() {
+            @Override
+            public <T> T inTransaction(Work<T> work) throws SQLException {
+                return database.inTransaction(work::execute);
+            }
+
+            @Override
+            public <T> T read(Work<T> work) throws SQLException {
+                try (Connection connection = database.openReadConnection()) {
+                    return work.execute(connection);
+                }
+            }
+        };
     }
 
     // ---------------------------------------------------------------- reads
@@ -40,18 +64,136 @@ public final class ChartOfAccounts {
 
     /** Every account, active or not, ordered by name. */
     public List<LedgerAccount> allAccounts() {
-        List<LedgerAccount> accounts = new ArrayList<>();
-        String sql = baseSelect() + " ORDER BY l.name";
-        try (Connection connection = database.openReadConnection();
-             Statement statement = connection.createStatement();
-             ResultSet rows = statement.executeQuery(sql)) {
-            while (rows.next()) {
-                accounts.add(mapAccount(rows));
+        return read("read the chart of accounts", connection -> {
+            List<LedgerAccount> accounts = new ArrayList<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rows = statement.executeQuery(baseSelect() + " ORDER BY l.name")) {
+                while (rows.next()) {
+                    accounts.add(mapAccount(rows));
+                }
             }
-        } catch (SQLException e) {
-            throw new ChartException("Could not read the chart of accounts", e);
+            return accounts;
+        });
+    }
+
+    /** Every group, roots first, then in the order the chart lists them. */
+    public List<LedgerGroup> groups() {
+        return read("read the ledger groups", connection -> {
+            List<LedgerGroup> groups = new ArrayList<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rows = statement.executeQuery("SELECT id, parent_id, system_code, name, nature, is_system "
+                         + "FROM ledger_group ORDER BY parent_id IS NOT NULL, sequence, name")) {
+                while (rows.next()) {
+                    groups.add(new LedgerGroup(rows.getString(1), rows.getString(2), rows.getString(3),
+                            rows.getString(4), AccountNature.valueOf(rows.getString(5)), rows.getInt(6) == 1));
+                }
+            }
+            return groups;
+        });
+    }
+
+    // ------------------------------------------------------------ creation
+
+    /**
+     * S2-1: a group is created under an existing one and takes its nature and
+     * its place in gross profit; its cash-flow class follows its ancestry.
+     * There is no way to create a root, so no way to put an expense among the
+     * assets.
+     */
+    public LedgerGroup createGroup(String name, String parentId, long now) {
+        String clean = requireName(name, "A group needs a name");
+        String id = Ids.newIdString();
+        return write("create the group", connection -> {
+            AccountNature nature;
+            int grossProfit;
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT nature, affects_gross_profit FROM ledger_group WHERE id = ?")) {
+                ps.setString(1, parentId);
+                try (ResultSet rows = ps.executeQuery()) {
+                    if (!rows.next()) {
+                        throw new ChartException("Choose the group this one belongs under");
+                    }
+                    nature = AccountNature.valueOf(rows.getString(1));
+                    grossProfit = rows.getInt(2);
+                }
+            }
+            if (countWhere(connection, "SELECT COUNT(*) FROM ledger_group WHERE name = ?", clean) > 0) {
+                throw new ChartException("A group named \"" + clean + "\" already exists");
+            }
+            try (PreparedStatement ps = connection.prepareStatement("INSERT INTO ledger_group (id, parent_id, name, "
+                    + "nature, affects_gross_profit, is_system, sequence, created_at, updated_at) VALUES "
+                    + "(?, ?, ?, ?, ?, 0, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM ledger_group), ?, ?)")) {
+                ps.setString(1, id);
+                ps.setString(2, parentId);
+                ps.setString(3, clean);
+                ps.setString(4, nature.name());
+                ps.setInt(5, grossProfit);
+                ps.setLong(6, now);
+                ps.setLong(7, now);
+                ps.executeUpdate();
+            }
+            return new LedgerGroup(id, parentId, null, clean, nature, false);
+        });
+    }
+
+    /**
+     * Create a ledger in a group. S2-2: never under Sundry Debtors or Sundry
+     * Creditors - a receivable or payable is a party's, created with the party,
+     * so invoices, receipts, ageing and GST details all have someone to belong to.
+     */
+    public LedgerAccount createLedger(String name, String groupId, long now) {
+        String clean = requireName(name, "An account needs a name");
+        String id = Ids.newIdString();
+        write("create the account", connection -> {
+            AccountNature nature = natureOfGroup(connection, groupId);
+            if (underAny(connection, groupId, "SUNDRY_DEBTORS", "SUNDRY_CREDITORS")) {
+                throw new ChartException("Customers and vendors are added as parties, which creates their "
+                        + "account in Sundry Debtors or Sundry Creditors");
+            }
+            if (countWhere(connection, "SELECT COUNT(*) FROM ledger WHERE name = ?", clean) > 0) {
+                throw new ChartException("An account named \"" + clean + "\" already exists");
+            }
+            try (PreparedStatement ps = connection.prepareStatement("INSERT INTO ledger (id, group_id, name, "
+                    + "created_at, updated_at) VALUES (?, ?, ?, ?, ?)")) {
+                ps.setString(1, id);
+                ps.setString(2, groupId);
+                ps.setString(3, clean);
+                ps.setLong(4, now);
+                ps.setLong(5, now);
+                ps.executeUpdate();
+            }
+            return nature;
+        });
+        return findById(id).orElseThrow();
+    }
+
+    private static String requireName(String name, String message) {
+        if (name == null || name.isBlank()) {
+            throw new ChartException(message);
         }
-        return accounts;
+        return name.strip();
+    }
+
+    /** Whether the group, or any group above it, has one of these system codes. */
+    private static boolean underAny(Connection connection, String groupId, String... codes) throws SQLException {
+        String current = groupId;
+        for (int depth = 0; current != null && depth < 64; depth++) {
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT system_code, parent_id FROM ledger_group WHERE id = ?")) {
+                ps.setString(1, current);
+                try (ResultSet rows = ps.executeQuery()) {
+                    if (!rows.next()) {
+                        return false;
+                    }
+                    String code = rows.getString(1);
+                    if (code != null && List.of(codes).contains(code)) {
+                        return true;
+                    }
+                    current = rows.getString(2);
+                }
+            }
+        }
+        return false;
     }
 
     // --------------------------------------------------------- governance
@@ -240,11 +382,7 @@ public final class ChartOfAccounts {
      * directly on a read connection.
      */
     public TrialBalance trialBalance(String fiscalYearId) {
-        try (Connection connection = database.openReadConnection()) {
-            return TrialBalanceQuery.compute(connection, fiscalYearId);
-        } catch (SQLException e) {
-            throw new ChartException("Could not compute the trial balance", e);
-        }
+        return read("compute the trial balance", connection -> TrialBalanceQuery.compute(connection, fiscalYearId));
     }
 
     // ------------------------------------------------------------ helpers
@@ -270,20 +408,31 @@ public final class ChartOfAccounts {
     }
 
     private Optional<LedgerAccount> queryOne(String where, String parameter) {
-        try (Connection connection = database.openReadConnection();
-             PreparedStatement ps = connection.prepareStatement(baseSelect() + " " + where)) {
-            ps.setString(1, parameter);
-            try (ResultSet rows = ps.executeQuery()) {
-                return rows.next() ? Optional.of(mapAccount(rows)) : Optional.empty();
+        return read("read the account", connection -> {
+            try (PreparedStatement ps = connection.prepareStatement(baseSelect() + " " + where)) {
+                ps.setString(1, parameter);
+                try (ResultSet rows = ps.executeQuery()) {
+                    return rows.next() ? Optional.of(mapAccount(rows)) : Optional.empty();
+                }
             }
-        } catch (SQLException e) {
-            throw new ChartException("Could not read the account", e);
-        }
+        });
     }
 
     private <T> void execute(SqlWork<T> work, String description) {
+        write(description, work);
+    }
+
+    private <T> T write(String description, SqlWork<T> work) {
         try {
-            database.inTransaction(connection -> work.run(connection));
+            return transactions.inTransaction(work::run);
+        } catch (SQLException e) {
+            throw new ChartException("Could not " + description + ": " + e.getMessage(), e);
+        }
+    }
+
+    private <T> T read(String description, SqlWork<T> work) {
+        try {
+            return transactions.read(work::run);
         } catch (SQLException e) {
             throw new ChartException("Could not " + description + ": " + e.getMessage(), e);
         }

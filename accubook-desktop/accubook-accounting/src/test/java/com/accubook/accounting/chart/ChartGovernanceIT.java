@@ -304,4 +304,62 @@ class ChartGovernanceIT {
             assertTrue(chart.findById(ledger).orElseThrow().active());
         }
     }
+
+    @Nested
+    @DisplayName("creating groups and accounts (S2-1, S2-2)")
+    class Creation {
+
+        @Test
+        @DisplayName("S2-1: a sub-group takes its parent's nature and gross-profit placement")
+        void subGroupInherits() throws SQLException {
+            LedgerGroup freight = chart.createGroup("  Freight Inward ", fixture.groupIdBySystemCode("DIRECT_EXPENSES"),
+                    1L);
+
+            assertAll(
+                    () -> assertEquals("Freight Inward", freight.name()),
+                    () -> assertEquals(AccountNature.EXPENSES, freight.nature()),
+                    () -> assertFalse(freight.system()),
+                    () -> assertEquals("1", fixture.scalar("SELECT affects_gross_profit FROM ledger_group WHERE id = '"
+                            + freight.id() + "'")),
+                    () -> assertTrue(chart.groups().contains(freight)));
+        }
+
+        @Test
+        @DisplayName("S2-1: no root can be created, and names stay unique")
+        void noRootsNoDuplicates() {
+            assertThrows(ChartException.class, () -> chart.createGroup("Misc", null, 1L));
+            assertThrows(ChartException.class, () -> chart.createGroup("Misc", "no-such-group", 1L));
+            assertThrows(ChartException.class, () -> chart.createGroup(" ", null, 1L));
+            ChartException e = assertThrows(ChartException.class, () -> chart.createGroup("Indirect Expenses",
+                    fixture.groupIdBySystemCode("EXPENSES_ROOT"), 1L));
+            assertTrue(e.getMessage().contains("already exists"));
+        }
+
+        @Test
+        @DisplayName("an account is created in a group, including a user's sub-group")
+        void createsLedger() throws SQLException {
+            LedgerGroup office = chart.createGroup("Office Expenses", fixture.groupIdBySystemCode("INDIRECT_EXPENSES"),
+                    1L);
+
+            LedgerAccount stationery = chart.createLedger("Stationery", office.id(), 2L);
+
+            assertAll(
+                    () -> assertEquals(office.id(), stationery.groupId()),
+                    () -> assertEquals(AccountNature.EXPENSES, stationery.nature()),
+                    () -> assertTrue(stationery.active()),
+                    () -> assertFalse(stationery.system()));
+            assertThrows(ChartException.class, () -> chart.createLedger("Stationery", office.id(), 3L));
+            assertThrows(ChartException.class, () -> chart.createLedger("Orphan", "no-such-group", 3L));
+        }
+
+        @Test
+        @DisplayName("S2-2: no plain account under Sundry Debtors or Creditors, nor under a sub-group of them")
+        void partiesOnly() throws SQLException {
+            ChartException e = assertThrows(ChartException.class, () -> chart.createLedger("Misc debtor",
+                    fixture.groupIdBySystemCode("SUNDRY_DEBTORS"), 1L));
+            assertTrue(e.getMessage().contains("parties"));
+            LedgerGroup pune = chart.createGroup("Pune Creditors", fixture.groupIdBySystemCode("SUNDRY_CREDITORS"), 1L);
+            assertThrows(ChartException.class, () -> chart.createLedger("Misc vendor", pune.id(), 2L));
+        }
+    }
 }
