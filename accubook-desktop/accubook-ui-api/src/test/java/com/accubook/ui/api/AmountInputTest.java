@@ -19,6 +19,7 @@ class AmountInputTest {
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
             "1,23,456.78|123456.78", "123,456.78|123456.78", "500|500", "₹ 500.50|500.50", "Rs. 75|75",
+            "12,34,56,789|123456789", "1,000|1000", "10,000|10000", "1,234,567|1234567",
             ".5|0.5", "10.|10", " 42 |42", "0|0"})
     @DisplayName("Indian or western grouping, a rupee sign, spaces")
     void reads(String typed, String expected) {
@@ -51,7 +52,8 @@ class AmountInputTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"12a", "1.2.3", "1,,", "1,.5", ",5", "--5", "1e5", "five", "1 000"})
+    @ValueSource(strings = {"12a", "1.2.3", "1,,", "1,.5", ",5", "--5", "1e5", "five", "1 000",
+            "900001,00,000.00", "12,34", "1,0000", "1234,567", "1,00,0000"})
     @DisplayName("anything else is not an amount")
     void refuses(String typed) {
         assertThrows(IllegalArgumentException.class, () -> AmountInput.signedMoney().parse(typed));

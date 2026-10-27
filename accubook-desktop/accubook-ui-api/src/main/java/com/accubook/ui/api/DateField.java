@@ -32,6 +32,9 @@ public final class DateField extends TextField {
         focusedProperty().addListener((obs, was, is) -> {
             if (!is) {
                 commit();
+            } else {
+                // Typing replaces what is there, as in any accounting entry.
+                javafx.application.Platform.runLater(this::selectAll);
             }
         });
         addEventFilter(javafx.event.ActionEvent.ACTION, e -> commit());
