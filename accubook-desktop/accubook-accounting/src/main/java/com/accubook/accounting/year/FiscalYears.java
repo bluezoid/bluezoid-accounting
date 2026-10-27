@@ -76,8 +76,30 @@ public final class FiscalYears {
      * P11-1: the opening voucher, dated the first day of the first year. A
      * difference between the debits and credits given goes to Opening Balance
      * Equity and is reported, so it can be investigated.
+     *
+     * <p>A party's opening is its unpaid bills, never a line here (S2-4). With
+     * opening stock entered item by item, Stock-in-Hand is that stock's value,
+     * computed and added - never typed (S2-5); otherwise year 1's gross profit
+     * would be wrong by the difference.
      */
     public OpeningResult postOpening(List<OpeningBalance> balances) {
+        return opening(balances, null, null);
+    }
+
+    /**
+     * S2-3: correct the opening balances while the first year is open. The live
+     * opening voucher is reversed on the same date and the corrected one
+     * posted; both are recorded, with the reason. After the first year closes,
+     * corrections are ordinary journals.
+     */
+    public OpeningResult replaceOpening(List<OpeningBalance> balances, String reason, String actor) {
+        if (reason == null || reason.isBlank()) {
+            throw new YearEndException("Replacing the opening balances needs a reason; it stays on the record");
+        }
+        return opening(balances, reason.strip(), actor);
+    }
+
+    private OpeningResult opening(List<OpeningBalance> balances, String reason, String actor) {
         if (balances.isEmpty()) {
             throw new YearEndException("Give at least one opening balance");
         }
@@ -86,29 +108,163 @@ public final class FiscalYears {
         write(c -> {
             List<FiscalYear> years = TrialBalanceQuery.fiscalYears(c);
             FiscalYear first = years.get(years.size() - 1);
-            if (events(c, first.id(), "OPENING") > 0) {
-                throw new YearEndException("The opening voucher is already posted; reverse it to post another");
+            String live = liveOpening(c, first.id());
+            if (reason == null && live != null) {
+                throw new YearEndException("The opening balances are already posted; replace them to correct them");
             }
+            if (reason != null && live == null) {
+                throw new YearEndException("There are no opening balances to replace");
+            }
+            if (first.closed()) {
+                throw new YearEndException(first.name() + " is closed; correct the opening position with a journal");
+            }
+            long stock = openingStockValue(c, first.startDate());
             List<EntryLine> entries = new ArrayList<>();
             BigDecimal net = BigDecimal.ZERO;
             for (OpeningBalance b : balances) {
                 if (b.debit().signum() == 0 && b.credit().signum() == 0) {
                     continue;
                 }
+                if (count(c, "SELECT COUNT(*) FROM party WHERE ledger_id = ?", b.ledgerId()) > 0) {
+                    throw new YearEndException(ledgerName(c, b.ledgerId()) + " is a party: enter its unpaid bills "
+                            + "as opening bills instead");
+                }
+                if (stock >= 0 && underStockInHand(c, b.ledgerId())) {
+                    throw new YearEndException("Stock-in-Hand comes from the opening stock entered item by item; "
+                            + "it is not typed");
+                }
                 entries.add(new EntryLine(b.ledgerId(), b.debit(), b.credit(), "Opening balance"));
                 net = net.add(b.debit()).subtract(b.credit());
+            }
+            if (stock > 0) {
+                BigDecimal value = MoneyMapper.fromStored(stock, Scale.MONEY);
+                entries.add(new EntryLine(stockLedger(c), value, BigDecimal.ZERO, "Opening stock"));
+                net = net.add(value);
             }
             if (net.signum() != 0) {
                 String equity = ledger(c, "OPENING_BALANCE_EQUITY");
                 entries.add(net.signum() > 0 ? EntryLine.credit(equity, net) : EntryLine.debit(equity, net.negate()));
             }
+            if (entries.isEmpty()) {
+                throw new YearEndException("Every opening balance given is nil");
+            }
             difference[0] = net;
+            int n = events(c, first.id(), "OPENING");
+            if (live != null) {
+                String reversal = posting.reverseWithin(c, live, new ReversalRequest(ACCOUNTING, first.id(),
+                        first.startDate(), "Opening balances replaced: " + reason, actor,
+                        "opening:" + first.id() + ":" + n)).voucherId();
+                event(c, first.id(), "OPENING", reversal, reason, actor);
+                n++;
+            }
             PostedVoucher v = posting.postWithin(c, new PostingRequest(ACCOUNTING, first.id(), journal(c),
-                    first.startDate(), null, "Opening balances", entries, "opening:" + first.id()));
+                    first.startDate(), null, "Opening balances", entries,
+                    n == 0 ? "opening:" + first.id() : "opening:" + first.id() + ":" + n));
             voucher[0] = v.voucherId();
-            event(c, first.id(), "OPENING", v.voucherId(), null, null);
+            event(c, first.id(), "OPENING", v.voucherId(), reason, actor);
         });
         return new OpeningResult(voucher[0], difference[0]);
+    }
+
+    /** The opening voucher in force: posted at the opening, neither reversed nor a reversal. */
+    private static String liveOpening(Connection c, String yearId) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("""
+                SELECT v.id FROM fiscal_year_event e JOIN voucher v ON v.id = e.voucher_id
+                WHERE e.fiscal_year_id = ? AND e.action = 'OPENING' AND v.reverses_voucher_id IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM voucher r WHERE r.reverses_voucher_id = v.id)
+                """)) {
+            ps.setString(1, yearId);
+            try (ResultSet r = ps.executeQuery()) {
+                return r.next() ? r.getString(1) : null;
+            }
+        }
+    }
+
+    /**
+     * The value of the stock entered as opening stock on or before the first
+     * day, rounded to the paisa as the valuation is (P8-6); -1 if there is none.
+     */
+    static long openingStockValue(Connection c, LocalDate firstDay) throws SQLException {
+        // Each movement valued as costing values it (to four places, half up),
+        // summed, then rounded to the paisa as the valuation posts it - so the
+        // two agree to the paisa. In Java: the product can pass a 64-bit integer,
+        // where SQLite would silently switch to floating point.
+        long rows = 0;
+        long valueE4 = 0;
+        try (PreparedStatement ps = c.prepareStatement("SELECT quantity_e4, unit_cost_e4 FROM stock_movement "
+                + "WHERE movement_type = 'OPENING' AND movement_date <= ?")) {
+            ps.setString(1, firstDay.toString());
+            try (ResultSet r = ps.executeQuery()) {
+                while (r.next()) {
+                    rows++;
+                    long cost = r.getLong(2);
+                    if (r.wasNull()) {
+                        throw new YearEndException("Some opening stock has no cost; give every opening item its cost");
+                    }
+                    valueE4 = Math.addExact(valueE4, BigDecimal.valueOf(r.getLong(1)).multiply(BigDecimal.valueOf(cost))
+                            .divide(BigDecimal.valueOf(10_000), 0, java.math.RoundingMode.HALF_UP).longValueExact());
+                }
+            }
+        }
+        return rows == 0 ? -1 : Math.floorDiv(valueE4 + 50, 100) * 100;
+    }
+
+    /** The Stock-in-Hand debit in the live opening voucher, in e4. */
+    private static long openingStockPosted(Connection c, String yearId) throws SQLException {
+        String live = liveOpening(c, yearId);
+        if (live == null) {
+            return 0;
+        }
+        try (PreparedStatement ps = c.prepareStatement("SELECT COALESCE(SUM(e.debit_amount_e4 - e.credit_amount_e4), "
+                + "0) FROM voucher_entry e JOIN ledger l ON l.id = e.ledger_id WHERE e.voucher_id = ? "
+                + "AND l.system_code = 'STOCK_IN_HAND'")) {
+            ps.setString(1, live);
+            try (ResultSet r = ps.executeQuery()) {
+                r.next();
+                return r.getLong(1);
+            }
+        }
+    }
+
+    private static boolean underStockInHand(Connection c, String ledgerId) throws SQLException {
+        return count(c, """
+                WITH RECURSIVE up(id, parent_id, system_code) AS (
+                    SELECT g.id, g.parent_id, g.system_code FROM ledger l JOIN ledger_group g ON g.id = l.group_id
+                    WHERE l.id = ?
+                    UNION ALL
+                    SELECT g.id, g.parent_id, g.system_code FROM ledger_group g JOIN up ON g.id = up.parent_id)
+                SELECT COUNT(*) FROM up WHERE system_code = 'STOCK_IN_HAND'
+                """, ledgerId) > 0;
+    }
+
+    /** The Stock-in-Hand ledger, created as inventory creates it if this is the first need of it. */
+    private String stockLedger(Connection c) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("SELECT id FROM ledger WHERE system_code = 'STOCK_IN_HAND'");
+             ResultSet r = ps.executeQuery()) {
+            if (r.next()) {
+                return r.getString(1);
+            }
+        }
+        String id = Ids.newIdString();
+        try (PreparedStatement ps = c.prepareStatement("INSERT INTO ledger (id, group_id, system_code, name, "
+                + "is_system, created_at, updated_at) SELECT ?, g.id, 'STOCK_IN_HAND', CASE WHEN EXISTS (SELECT 1 "
+                + "FROM ledger WHERE lower(name) = 'stock-in-hand') THEN 'Stock-in-Hand (AccuBook)' ELSE "
+                + "'Stock-in-Hand' END, 1, ?, ? FROM ledger_group g WHERE g.system_code = 'STOCK_IN_HAND'")) {
+            ps.setString(1, id);
+            ps.setLong(2, clock.millis());
+            ps.setLong(3, clock.millis());
+            ps.executeUpdate();
+        }
+        return id;
+    }
+
+    private static String ledgerName(Connection c, String ledgerId) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("SELECT name FROM ledger WHERE id = ?")) {
+            ps.setString(1, ledgerId);
+            try (ResultSet r = ps.executeQuery()) {
+                return r.next() ? r.getString(1) : ledgerId;
+            }
+        }
     }
 
     /**
@@ -224,6 +380,14 @@ public final class FiscalYears {
                     + "AND (SELECT end_date FROM fiscal_year WHERE id = ?1)", year.id());
             if (drafts > 0) {
                 problems.add(drafts + " draft " + side + " document(s)");
+            }
+        }
+        List<FiscalYear> years = TrialBalanceQuery.fiscalYears(c);
+        if (years.get(years.size() - 1).id().equals(year.id())) {
+            long stock = openingStockValue(c, year.startDate());
+            if (stock >= 0 && stock != openingStockPosted(c, year.id())) {
+                problems.add("the opening balances do not carry the opening stock now entered ("
+                        + MoneyMapper.fromStored(stock, Scale.MONEY).setScale(2).toPlainString() + "); replace them");
             }
         }
         int moved = count(c, "SELECT COUNT(*) FROM stock_movement WHERE movement_date <= "

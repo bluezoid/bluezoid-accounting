@@ -8,6 +8,7 @@ import com.accubook.accounting.posting.EntryLine;
 import com.accubook.accounting.posting.PostingException;
 import com.accubook.accounting.posting.PostingRequest;
 import com.accubook.accounting.posting.TransactionalPosting;
+import com.accubook.accounting.report.FinancialStatements;
 import com.accubook.accounting.year.FiscalYears;
 import com.accubook.accounting.year.OpeningBalance;
 import com.accubook.accounting.year.OpeningResult;
@@ -242,5 +243,74 @@ class YearEndIT {
 
         assertThatThrownBy(() -> years.reopen(year1.id(), "Correction", "owner"))
                 .hasMessageContaining("only the most recently closed year");
+    }
+
+    @Test
+    @DisplayName("S2-3: the opening is replaced with a reason while year 1 is open - twice if need be - never after")
+    void replaceOpening() throws Exception {
+        years.postOpening(List.of(OpeningBalance.debit(cash, d("100000"))));
+        assertThatThrownBy(() -> years.replaceOpening(List.of(OpeningBalance.debit(cash, d("90000"))), " ", "owner"))
+                .hasMessageContaining("needs a reason");
+
+        years.replaceOpening(List.of(OpeningBalance.debit(cash, d("90000"))), "Cash was counted wrong", "owner");
+        years.replaceOpening(List.of(OpeningBalance.debit(cash, d("95000"))), "Recounted again", "owner");
+
+        assertThat(balance("CASH_IN_HAND", year1.startDate())).isEqualByComparingTo("95000");
+        assertThat(balance("OPENING_BALANCE_EQUITY", year1.startDate())).isEqualByComparingTo("-95000");
+        assertThat(scalar("SELECT COUNT(*) FROM fiscal_year_event WHERE action = 'OPENING' AND reason = "
+                + "'Recounted again'")).isEqualTo("2");
+        assertThat(new FinancialStatements(transactions).cashFlow(year1.startDate(), year1.endDate()).openingCash())
+                .as("replaced openings and their reversals are not flows").isEqualByComparingTo("95000");
+
+        years.close(year1.id(), "owner");
+        assertThatThrownBy(() -> years.replaceOpening(List.of(OpeningBalance.debit(cash, d("1"))), "Late", "owner"))
+                .isInstanceOf(YearEndException.class).hasMessageContaining("is closed");
+    }
+
+    @Test
+    @DisplayName("S2-3: nothing to replace before the opening is posted")
+    void nothingToReplace() {
+        assertThatThrownBy(() -> years.replaceOpening(List.of(OpeningBalance.debit(cash, d("1"))), "Why", "owner"))
+                .hasMessageContaining("no opening balances to replace");
+    }
+
+    @Test
+    @DisplayName("S2-4: a party's ledger is not an opening line; its unpaid bills are")
+    void noPartyLines() {
+        assertThatThrownBy(() -> years.postOpening(List.of(OpeningBalance.debit(customer.ledgerId(), d("500")))))
+                .isInstanceOf(YearEndException.class).hasMessageContaining("Mehta Stores is a party");
+    }
+
+    @Test
+    @DisplayName("S2-5: Stock-in-Hand is the item-wise opening stock, computed to the paisa, never typed")
+    void openingStock() throws Exception {
+        Inventory inventory = new Inventory(transactions, guard);
+        var unit = inventory.createUnit("NOS", "Numbers", 0);
+        var lamp = inventory.createItem("Lamp", ItemKind.GOODS, unit.id(), null, null, null, null);
+        var main = inventory.createWarehouse("Main", null);
+        // 3 x 33.3333 = 99.9999, which the valuation posts as 100.00.
+        inventory.record(MovementRequest.in(MovementType.OPENING, lamp.id(), main.id(), d("3"), d("33.3333"),
+                year1.startDate(), null));
+
+        years.postOpening(List.of(OpeningBalance.debit(cash, d("1000"))));
+
+        assertThat(balance("STOCK_IN_HAND", year1.startDate())).isEqualByComparingTo("100.00");
+        assertThat(balance("OPENING_BALANCE_EQUITY", year1.startDate())).isEqualByComparingTo("-1100");
+        String stockLedger = scalar("SELECT id FROM ledger WHERE system_code = 'STOCK_IN_HAND'");
+        assertThatThrownBy(() -> years.replaceOpening(List.of(OpeningBalance.debit(stockLedger, d("100"))), "Typed",
+                "owner")).hasMessageContaining("not typed");
+
+        // Opening stock found later: the books no longer carry it, so year 1 will not close until replaced.
+        inventory.record(MovementRequest.in(MovementType.OPENING, lamp.id(), main.id(), d("2"), d("50"),
+                year1.startDate(), null));
+        inventory.postValuation(year1.endDate());
+        assertThatThrownBy(() -> years.close(year1.id(), "owner"))
+                .hasMessageContaining("do not carry the opening stock now entered (200.00)");
+
+        years.replaceOpening(List.of(OpeningBalance.debit(cash, d("1000"))), "Opening stock found", "owner");
+        inventory.postValuation(year1.endDate());
+        years.close(year1.id(), "owner");
+        assertThat(balance("Change in Stock", year1.endDate())).as("no trade: stock unchanged, no profit from it")
+                .isEqualByComparingTo("0");
     }
 }
