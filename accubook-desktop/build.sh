@@ -92,8 +92,9 @@ echo "==> plan '${PLAN}' resolves to ${#PLAN_MODULES[@]} optional modules: ${PLA
 # ledger, present in every build. Omitting it produces an application that
 # cannot post at all - caught by a real build, not by review.
 # trade is the document engine shared by sales-invoicing and purchase-billing:
-# a library, not a sellable module, so it is not in the plan matrix.
-ALWAYS_INCLUDED=(platform persistence module-api licensing tax accounting trade app ui-api ui-shell launcher)
+# a library, not a sellable module, so it is not in the plan matrix. Its
+# screens (ui-trade) come with it; each side's show only with its module.
+ALWAYS_INCLUDED=(platform persistence module-api licensing tax accounting trade app ui-api ui-shell ui-trade launcher)
 
 is_included() {
   local artifact="$1" candidate

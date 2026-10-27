@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.accubook</groupId><artifactId>accubook-desktop</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+  <artifactId>accubook-ui-trade</artifactId>
+  <name>AccuBook :: UI :: Trade</name>
+  <description>Sales and purchase screens, one code path per side. Packaged with trade, in every build.</description>
+  <dependencies>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-ui-api</artifactId></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-trade</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-accounting</artifactId></dependency>
+  </dependencies>
+</project>

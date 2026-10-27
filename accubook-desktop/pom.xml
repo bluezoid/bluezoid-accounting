@@ -33,6 +33,7 @@
     <module>accubook-ui-shell</module>
     <module>accubook-ui-inventory</module>
     <module>accubook-ui-banking</module>
+    <module>accubook-ui-trade</module>
     <module>accubook-launcher</module>
   </modules>
 
