@@ -32,7 +32,8 @@ public final class SalesInvoicingModule implements FeatureModule {
     @Override
     public Set<String> ownedTables() {
         return Set.of("sales_document", "sales_document_line", "sales_tax_line",
-                "sales_settlement", "sales_allocation");
+                "sales_settlement", "sales_allocation", "sales_opening_bill",
+                "sales_opening_allocation");
     }
 
     /** Migration 7 completed this module's tables. */

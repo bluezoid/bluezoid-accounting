@@ -90,7 +90,7 @@ public final class Schemas {
                 COMPANY_V12_WITHHOLDING, COMPANY_V13_GST_RETURNS,
                 COMPANY_V14_GSTR2B, COMPANY_V15_COMPOSITION, COMPANY_V16_TDS_CHALLANS,
                 COMPANY_V17_EINVOICE, COMPANY_V18_BANKING, COMPANY_V19_YEAR_END,
-                COMPANY_V20_CASH_FLOW);
+                COMPANY_V20_CASH_FLOW, COMPANY_V21_OPENING_BILLS);
     }
 
     /**
@@ -2185,6 +2185,184 @@ public final class Schemas {
                 updated_at  INTEGER NOT NULL
             ) STRICT;
             """);
+
+    /**
+     * Phase 11S (S2-4): a party's opening position, bill by bill. Each unpaid
+     * bill from before the books begin is recorded with its own date and due
+     * date, so receipts and payments allocate to it and it ages; its voucher
+     * on the first day moves the amount between the party and Opening Balance
+     * Equity.
+     *
+     * <p>Its own tables, not a new document kind: every GST return, register,
+     * TDS and e-invoice query reads the document tables, and an opening bill
+     * is not a supply in any period the books cover. The allocation rules are
+     * those of documents, and a receipt's or note's limit counts both tables.
+     */
+    private static final Migration COMPANY_V21_OPENING_BILLS = new Migration(21, "opening bills",
+            openingBills("sales") + openingBills("purchase"));
+
+    private static String openingBills(String side) {
+        return """
+            CREATE TABLE %1$s_opening_bill (
+                id                      TEXT    NOT NULL PRIMARY KEY,
+                party_id                TEXT    NOT NULL REFERENCES party (id),
+                number                  TEXT    NOT NULL,
+                bill_date               TEXT    NOT NULL,
+                due_date                TEXT,
+                amount_e4               INTEGER NOT NULL CHECK (amount_e4 > 0 AND amount_e4 %% 100 = 0),
+                fiscal_year_id          TEXT    NOT NULL REFERENCES fiscal_year (id),
+                voucher_id              TEXT    NOT NULL REFERENCES voucher (id),
+                status                  TEXT    NOT NULL DEFAULT 'POSTED' CHECK (status IN ('POSTED', 'CANCELLED')),
+                cancellation_voucher_id TEXT REFERENCES voucher (id),
+                cancellation_reason     TEXT,
+                narration               TEXT,
+                created_at              INTEGER NOT NULL,
+                CHECK (due_date IS NULL OR due_date >= bill_date),
+                CHECK ((status = 'CANCELLED') = (cancellation_voucher_id IS NOT NULL)),
+                CHECK ((cancellation_reason IS NULL) = (cancellation_voucher_id IS NULL)),
+                UNIQUE (party_id, number)
+            ) STRICT;
+
+            CREATE INDEX idx_%1$s_opening_bill_party ON %1$s_opening_bill (party_id, bill_date);
+
+            -- From before the books begin, or it is not an opening bill.
+            CREATE TRIGGER %1$s_opening_bill_before_books BEFORE INSERT ON %1$s_opening_bill
+            WHEN NEW.bill_date >= (SELECT MIN(start_date) FROM fiscal_year)
+            BEGIN
+                SELECT RAISE(ABORT, 'An opening bill is dated before the books begin');
+            END;
+
+            CREATE TRIGGER %1$s_opening_bill_immutable BEFORE UPDATE ON %1$s_opening_bill
+            WHEN NOT (OLD.status = 'POSTED' AND NEW.status = 'CANCELLED'
+                      AND NEW.party_id = OLD.party_id AND NEW.number = OLD.number
+                      AND NEW.bill_date = OLD.bill_date AND NEW.due_date IS OLD.due_date
+                      AND NEW.amount_e4 = OLD.amount_e4 AND NEW.voucher_id = OLD.voucher_id
+                      AND NEW.fiscal_year_id = OLD.fiscal_year_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'An opening bill cannot be changed; cancel it and enter it again');
+            END;
+
+            CREATE TRIGGER %1$s_opening_bill_no_delete BEFORE DELETE ON %1$s_opening_bill
+            BEGIN
+                SELECT RAISE(ABORT, 'An opening bill is cancelled, never deleted');
+            END;
+
+            CREATE TABLE %1$s_opening_allocation (
+                id              TEXT    NOT NULL PRIMARY KEY,
+                source_type     TEXT    NOT NULL CHECK (source_type IN ('SETTLEMENT', 'NOTE')),
+                source_id       TEXT    NOT NULL,
+                opening_bill_id TEXT    NOT NULL REFERENCES %1$s_opening_bill (id),
+                amount_e4       INTEGER NOT NULL CHECK (amount_e4 > 0 AND amount_e4 %% 100 = 0),
+                effective_date  TEXT    NOT NULL,
+                removed_date    TEXT,
+                removal_reason  TEXT,
+                created_at      INTEGER NOT NULL,
+                CHECK ((removed_date IS NULL) = (removal_reason IS NULL)),
+                CHECK (removed_date IS NULL OR removed_date >= effective_date)
+            ) STRICT;
+
+            CREATE UNIQUE INDEX idx_%1$s_opening_allocation_live
+                ON %1$s_opening_allocation (source_type, source_id, opening_bill_id) WHERE removed_date IS NULL;
+            CREATE INDEX idx_%1$s_opening_allocation_bill ON %1$s_opening_allocation (opening_bill_id);
+            CREATE INDEX idx_%1$s_opening_allocation_source ON %1$s_opening_allocation (source_type, source_id);
+
+            CREATE TRIGGER %1$s_opening_allocation_no_update BEFORE UPDATE ON %1$s_opening_allocation
+            WHEN NOT (OLD.removed_date IS NULL AND NEW.removed_date IS NOT NULL
+                      AND NEW.source_type = OLD.source_type AND NEW.source_id = OLD.source_id
+                      AND NEW.opening_bill_id = OLD.opening_bill_id AND NEW.amount_e4 = OLD.amount_e4
+                      AND NEW.effective_date = OLD.effective_date)
+            BEGIN
+                SELECT RAISE(ABORT, 'An allocation cannot be changed; remove it and allocate again');
+            END;
+
+            CREATE TRIGGER %1$s_opening_allocation_no_delete BEFORE DELETE ON %1$s_opening_allocation
+            BEGIN
+                SELECT RAISE(ABORT, 'An allocation is removed, never deleted');
+            END;
+
+            CREATE TRIGGER %1$s_opening_allocation_target BEFORE INSERT ON %1$s_opening_allocation
+            WHEN NOT EXISTS (SELECT 1 FROM %1$s_opening_bill WHERE id = NEW.opening_bill_id AND status = 'POSTED')
+            BEGIN
+                SELECT RAISE(ABORT, 'Only a standing opening bill can be allocated to');
+            END;
+
+            CREATE TRIGGER %1$s_opening_allocation_source BEFORE INSERT ON %1$s_opening_allocation
+            WHEN NOT EXISTS (
+                SELECT 1 FROM %1$s_settlement s JOIN %1$s_opening_bill b ON b.id = NEW.opening_bill_id
+                WHERE NEW.source_type = 'SETTLEMENT' AND s.id = NEW.source_id
+                  AND s.status = 'POSTED' AND s.party_id = b.party_id
+                UNION ALL
+                SELECT 1 FROM %1$s_document n JOIN %1$s_opening_bill b ON b.id = NEW.opening_bill_id
+                WHERE NEW.source_type = 'NOTE' AND n.id = NEW.source_id AND n.status = 'POSTED'
+                  AND n.original_document_id IS NOT NULL AND n.party_id = b.party_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'An allocation needs a posted receipt, payment or note of the same party');
+            END;
+
+            CREATE TRIGGER %1$s_opening_allocation_bill_limit BEFORE INSERT ON %1$s_opening_allocation
+            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_opening_allocation
+                  WHERE opening_bill_id = NEW.opening_bill_id AND removed_date IS NULL)
+                 + NEW.amount_e4 > (SELECT amount_e4 FROM %1$s_opening_bill WHERE id = NEW.opening_bill_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'This would allocate more than the opening bill');
+            END;
+
+            -- A source's limit counts what it applied to documents and to opening bills.
+            CREATE TRIGGER %1$s_opening_allocation_source_limit BEFORE INSERT ON %1$s_opening_allocation
+            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation
+                  WHERE source_type = NEW.source_type AND source_id = NEW.source_id AND removed_date IS NULL)
+                 + (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_opening_allocation
+                  WHERE source_type = NEW.source_type AND source_id = NEW.source_id AND removed_date IS NULL)
+                 + NEW.amount_e4
+                 > CASE NEW.source_type
+                       WHEN 'SETTLEMENT' THEN (SELECT amount_e4 FROM %1$s_settlement WHERE id = NEW.source_id)
+                       ELSE (SELECT settle_e4 FROM %1$s_document WHERE id = NEW.source_id)
+                   END
+            BEGIN
+                SELECT RAISE(ABORT, 'This would allocate more than the receipt, payment or note holds');
+            END;
+
+            DROP TRIGGER %1$s_allocation_source_limit;
+            CREATE TRIGGER %1$s_allocation_source_limit BEFORE INSERT ON %1$s_allocation
+            WHEN (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_allocation
+                  WHERE source_type = NEW.source_type AND source_id = NEW.source_id AND removed_date IS NULL)
+                 + (SELECT COALESCE(SUM(amount_e4), 0) FROM %1$s_opening_allocation
+                  WHERE source_type = NEW.source_type AND source_id = NEW.source_id AND removed_date IS NULL)
+                 + NEW.amount_e4
+                 > CASE NEW.source_type
+                       WHEN 'SETTLEMENT' THEN (SELECT amount_e4 FROM %1$s_settlement WHERE id = NEW.source_id)
+                       ELSE (SELECT settle_e4 FROM %1$s_document WHERE id = NEW.source_id)
+                   END
+            BEGIN
+                SELECT RAISE(ABORT, 'This would allocate more than the receipt, payment or note holds');
+            END;
+
+            CREATE TRIGGER %1$s_settlement_cancel_opening_unallocated
+            BEFORE UPDATE OF status ON %1$s_settlement
+            WHEN NEW.status = 'CANCELLED' AND EXISTS (SELECT 1 FROM %1$s_opening_allocation
+                WHERE source_type = 'SETTLEMENT' AND source_id = OLD.id AND removed_date IS NULL)
+            BEGIN
+                SELECT RAISE(ABORT, 'Remove this receipt or payment''s allocations before cancelling it');
+            END;
+
+            CREATE TRIGGER %1$s_note_cancel_opening_unallocated
+            BEFORE UPDATE OF status ON %1$s_document
+            WHEN NEW.status = 'CANCELLED' AND EXISTS (SELECT 1 FROM %1$s_opening_allocation
+                WHERE source_type = 'NOTE' AND source_id = OLD.id AND removed_date IS NULL)
+            BEGIN
+                SELECT RAISE(ABORT, 'This document has allocations; remove them before cancelling');
+            END;
+
+            CREATE TRIGGER %1$s_opening_bill_cancel_unallocated
+            BEFORE UPDATE OF status ON %1$s_opening_bill
+            WHEN NEW.status = 'CANCELLED' AND EXISTS (SELECT 1 FROM %1$s_opening_allocation
+                WHERE opening_bill_id = OLD.id AND removed_date IS NULL)
+            BEGIN
+                SELECT RAISE(ABORT, 'This opening bill has payments applied; remove them before cancelling');
+            END;
+
+            """.formatted(side);
+    }
 
     private static String gstPeriodLock(String side, String returnTypes) {
         return """

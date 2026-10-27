@@ -60,14 +60,16 @@ class SchemaMigrationSafetyIT {
             // 11 (P9b) GST on documents; 12 (P9c) TDS and TCS; 13 (P9d) GST returns;
             // 14 (P9d-3) GSTR-2B imports; 15 (P9d-4) composition tax; 16 (P9d-5) TDS deposits;
             // 17 (P9e) e-invoices and e-way bills; 18 (P10) banking; 19 (P11) year-end;
-            // 20 (P11b) cash flow classification.
-            assertThat(result.toVersion()).isEqualTo(20);
+            // 20 (P11b) cash flow classification; 21 (11S S2-4) opening bills.
+            assertThat(result.toVersion()).isEqualTo(21);
             assertThat(tables(database)).contains(
                     "company_info", "fiscal_year", "ledger_group", "ledger",
                     "voucher_type", "number_counter", "voucher", "voucher_entry", "audit_log",
                     "party", "unit", "item_category", "item", "warehouse", "stock", "stock_movement",
                     "sales_document", "sales_document_line", "purchase_document", "purchase_document_line",
                     "sales_settlement", "sales_allocation", "purchase_settlement", "purchase_allocation",
+                    "sales_opening_bill", "sales_opening_allocation", "purchase_opening_bill",
+                    "purchase_opening_allocation",
                     "sales_quotation", "sales_order", "purchase_order",
                     "valuation_entry", "fifo_layer", "fifo_consumption", "valuation_run", "gst_registration");
         }

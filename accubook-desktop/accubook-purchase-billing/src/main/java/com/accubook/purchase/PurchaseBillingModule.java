@@ -32,7 +32,8 @@ public final class PurchaseBillingModule implements FeatureModule {
     @Override
     public Set<String> ownedTables() {
         return Set.of("purchase_document", "purchase_document_line", "purchase_tax_line",
-                "purchase_settlement", "purchase_allocation");
+                "purchase_settlement", "purchase_allocation", "purchase_opening_bill",
+                "purchase_opening_allocation");
     }
 
     /** Migration 7 completed this module's tables. */
