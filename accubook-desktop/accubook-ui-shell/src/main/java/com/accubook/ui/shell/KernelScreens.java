@@ -20,6 +20,7 @@ final class KernelScreens implements ScreenProvider {
     static final String TRIAL_BALANCE = "trial-balance";
     static final String COMPANY_SETTINGS = "company-settings";
     static final String CHART = "chart-of-accounts";
+    static final String PARTIES = "parties";
 
     @Override
     public ModuleId module() {
@@ -30,6 +31,7 @@ final class KernelScreens implements ScreenProvider {
     public List<NavigationEntry> entries() {
         return List.of(
                 NavigationEntry.of(CHART, Section.MASTERS, "Chart of accounts", 10, ChartScreen::new),
+                NavigationEntry.of(PARTIES, Section.MASTERS, "Customers and vendors", 20, PartiesScreen::new),
                 NavigationEntry.of(TRIAL_BALANCE, Section.REPORTS, "Trial balance", 10, KernelScreens::trialBalance),
                 NavigationEntry.of(COMPANY_SETTINGS, Section.SETTINGS, "Company and GST", 10,
                         CompanySettingsScreen::new));
