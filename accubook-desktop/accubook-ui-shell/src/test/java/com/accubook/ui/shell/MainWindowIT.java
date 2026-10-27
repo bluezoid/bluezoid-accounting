@@ -121,8 +121,11 @@ class MainWindowIT extends ApplicationTest {
     @Test
     @DisplayName("a screen with unsaved work stays open on Ctrl+W until it agrees to close")
     void refusesToClose() {
+        clickOn("#navigation");
         type(KeyCode.F7);
         TabPane tabs = lookup("#workArea").query();
+        WaitForAsyncUtils.waitForFxEvents();
+        assertThat(tabs.getTabs()).as("F7 opened the screen").hasSize(1);
         closable = false;
         press(KeyCode.CONTROL).press(KeyCode.W).release(KeyCode.W).release(KeyCode.CONTROL);
         WaitForAsyncUtils.waitForFxEvents();
