@@ -238,4 +238,29 @@ class BankingIT {
         });
         assertThat(banking.confirmAllCertain(bank)).isZero();
     }
+
+    @Test
+    @DisplayName("a bank account is opened with its ledger in one step; a refused detail leaves no ledger behind")
+    void openAccount() throws Exception {
+        BankAccount sbi = banking.openAccount("SBI Current", "State Bank of India", "Pune", "3012 3456 789",
+                "sbin0001234", "CURRENT");
+
+        assertThat(sbi.ledgerName()).isEqualTo("SBI Current");
+        assertThat(sbi.accountNumber()).isEqualTo("30123456789");
+        assertThat(sbi.ifsc()).isEqualTo("SBIN0001234");
+        assertThat(banking.accounts()).extracting(BankAccount::ledgerName).containsExactly("HDFC Current", "SBI Current");
+
+        assertThatThrownBy(() -> banking.openAccount("Axis Current", "Axis Bank", null, "999", "AXIS123", "CURRENT"))
+                .isInstanceOf(BankingException.class).hasMessageContaining("not an IFSC");
+        assertThatThrownBy(() -> banking.openAccount("SBI Again", "State Bank of India", null, "30123456789", null,
+                "CURRENT")).hasMessageContaining("already recorded");
+        int ledgers = Integer.parseInt(transactions.read(c -> {
+            try (var ps = c.prepareStatement("SELECT COUNT(*) FROM ledger WHERE name IN ('Axis Current', 'SBI Again')");
+                 var r = ps.executeQuery()) {
+                r.next();
+                return r.getString(1);
+            }
+        }));
+        assertThat(ledgers).isZero();
+    }
 }

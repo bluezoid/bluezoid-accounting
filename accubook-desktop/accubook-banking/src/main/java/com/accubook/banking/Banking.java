@@ -64,6 +64,62 @@ public final class Banking {
     public BankAccount registerAccount(String ledgerId, String bankName, String branch, String accountNumber,
                                        String ifsc, String type) {
         require("record a bank account");
+        String code = checked(bankName, accountNumber, ifsc);
+        write(c -> insertAccount(c, ledgerId, bankName, branch, accountNumber, code, type), "record the bank account");
+        return account(ledgerId);
+    }
+
+    /**
+     * A new bank account: its ledger in Cash &amp; Bank and its details, in one
+     * transaction, so a refused detail never leaves a ledger behind.
+     */
+    public BankAccount openAccount(String ledgerName, String bankName, String branch, String accountNumber,
+                                   String ifsc, String type) {
+        require("open a bank account");
+        if (ledgerName == null || ledgerName.isBlank()) {
+            throw new BankingException("Name the account as it should appear in the books");
+        }
+        String code = checked(bankName, accountNumber, ifsc);
+        String id = Ids.newIdString();
+        write(c -> {
+            try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM ledger WHERE name = ?")) {
+                ps.setString(1, ledgerName.strip());
+                try (ResultSet r = ps.executeQuery()) {
+                    r.next();
+                    if (r.getInt(1) > 0) {
+                        throw new BankingException("An account named \"" + ledgerName.strip() + "\" already exists");
+                    }
+                }
+            }
+            try (PreparedStatement ps = c.prepareStatement("INSERT INTO ledger (id, group_id, name, created_at, "
+                    + "updated_at) SELECT ?, id, ?, ?, ? FROM ledger_group WHERE system_code = 'CASH_AND_BANK'")) {
+                ps.setString(1, id);
+                ps.setString(2, ledgerName.strip());
+                ps.setLong(3, clock.millis());
+                ps.setLong(4, clock.millis());
+                ps.executeUpdate();
+            }
+            insertAccount(c, id, bankName, branch, accountNumber, code, type);
+        }, "open the bank account");
+        return account(id);
+    }
+
+    /** Every bank account, by name. */
+    public List<BankAccount> accounts() {
+        return read(c -> {
+            List<BankAccount> result = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("SELECT b.ledger_id FROM bank_account b "
+                    + "JOIN ledger l ON l.id = b.ledger_id ORDER BY l.name"); ResultSet r = ps.executeQuery()) {
+                while (r.next()) {
+                    result.add(accountRow(c, r.getString(1)));
+                }
+            }
+            return result;
+        });
+    }
+
+    /** The IFSC, upper-cased, or null; refused if a detail is missing or malformed. */
+    private static String checked(String bankName, String accountNumber, String ifsc) {
         if (bankName == null || bankName.isBlank() || accountNumber == null || accountNumber.isBlank()) {
             throw new BankingException("A bank account needs the bank's name and the account number");
         }
@@ -71,21 +127,28 @@ public final class Banking {
         if (code != null && !code.matches("[A-Z]{4}0[A-Z0-9]{6}")) {
             throw new BankingException("\"" + ifsc + "\" is not an IFSC: four letters, 0, then six letters or digits");
         }
-        write(c -> {
-            try (PreparedStatement ps = c.prepareStatement("INSERT INTO bank_account (ledger_id, bank_name, branch, "
-                    + "account_number, ifsc, account_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
-                ps.setString(1, ledgerId);
-                ps.setString(2, bankName.strip());
-                ps.setString(3, branch == null || branch.isBlank() ? null : branch.strip());
-                ps.setString(4, accountNumber.replaceAll("\\s", ""));
-                ps.setString(5, code);
-                ps.setString(6, type);
-                ps.setLong(7, clock.millis());
-                ps.setLong(8, clock.millis());
-                ps.executeUpdate();
+        return code;
+    }
+
+    private void insertAccount(Connection c, String ledgerId, String bankName, String branch, String accountNumber,
+                               String ifsc, String type) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("INSERT INTO bank_account (ledger_id, bank_name, branch, "
+                + "account_number, ifsc, account_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setString(1, ledgerId);
+            ps.setString(2, bankName.strip());
+            ps.setString(3, branch == null || branch.isBlank() ? null : branch.strip());
+            ps.setString(4, accountNumber.replaceAll("\\s", ""));
+            ps.setString(5, ifsc);
+            ps.setString(6, type);
+            ps.setLong(7, clock.millis());
+            ps.setLong(8, clock.millis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            if (String.valueOf(e.getMessage()).contains("UNIQUE")) {
+                throw new BankingException("Account number " + accountNumber.strip() + " is already recorded", e);
             }
-        }, "record the bank account");
-        return account(ledgerId);
+            throw e;
+        }
     }
 
     /**
