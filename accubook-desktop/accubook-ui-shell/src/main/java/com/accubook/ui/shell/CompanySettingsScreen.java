@@ -63,9 +63,7 @@ final class CompanySettingsScreen implements Screen {
         this.registrations = new GstRegistrations(context.transactions(), context.clock());
         this.from = new DateField(() -> LocalDate.now(context.clock()), context::fiscalYearStart);
 
-        List<StateCode> states = context.rules().get().states();
         for (ComboBox<StateCode> box : List.of(state, registrationState)) {
-            box.getItems().setAll(states);
             box.setConverter(new StringConverter<>() {
                 @Override
                 public String toString(StateCode s) {
@@ -157,7 +155,10 @@ final class CompanySettingsScreen implements Screen {
 
     private void load() {
         context.background("Reading company settings",
-                () -> new Loaded(identity.get().orElse(null), registrations.history()), loaded -> {
+                () -> new Loaded(context.rules().get().states(), identity.get().orElse(null),
+                        registrations.history()), loaded -> {
+                    state.getItems().setAll(loaded.states());
+                    registrationState.getItems().setAll(loaded.states());
                     if (loaded.address() != null) {
                         legalName.setText(loaded.address().legalName());
                         line1.setText(loaded.address().line1());
@@ -172,7 +173,7 @@ final class CompanySettingsScreen implements Screen {
                 });
     }
 
-    private record Loaded(CompanyIdentity.Address address, List<GstRegistration> history) {
+    private record Loaded(List<StateCode> states, CompanyIdentity.Address address, List<GstRegistration> history) {
     }
 
     private void saveIdentity() {

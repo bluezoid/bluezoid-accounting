@@ -21,6 +21,7 @@ public interface ScreenContext {
 
     Clock clock();
 
+    /** The rule pack in force. It may read storage: call it only inside {@link #background}. */
     Supplier<RulePack> rules();
 
     /** ACTIVE, or READ_ONLY: the screen opens with editing disabled. */
