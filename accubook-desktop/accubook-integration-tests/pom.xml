@@ -22,6 +22,7 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-banking</artifactId><version>${project.version}</version><scope>test</scope></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-ui-inventory</artifactId><version>${project.version}</version><scope>test</scope></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-ui-banking</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-ui-trade</artifactId><version>${project.version}</version><scope>test</scope></dependency>
     <dependency><groupId>org.testfx</groupId><artifactId>testfx-junit5</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>
