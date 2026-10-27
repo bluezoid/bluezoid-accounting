@@ -132,3 +132,23 @@ screen matches the engine's.
 - The trial balance relied on a ComboBox action event that does not reliably
   fire while a new tab is built; it sometimes never loaded. Fixed (load on the
   value) and found only because the shell test became a tab test.
+
+## 7. S2 — masters and opening balances (decisions S2-1…S2-5, 2026-10-27)
+
+### Engine gaps found
+- `ChartOfAccounts` cannot create a ledger or a group (tests insert them with
+  SQL), and takes a raw `Database`, which screens cannot reach.
+- `FiscalYears.postOpening` refuses a second opening voucher even after the
+  first is reversed (it counts every OPENING event), so a mistaken opening
+  could never be corrected - the message tells the user to do what the code
+  forbids.
+- Party opening bills (P11-1) do not exist in the document engine.
+
+### Design
+| Step | Change |
+|---|---|
+| S2a | `ChartOfAccounts(ModuleTransactions)`; `groups()`; `createGroup` (sub-groups only, S2-1); `createLedger` (refused under Sundry Debtors/Creditors, S2-2) |
+| S2b | `FiscalYears.replaceOpening(balances, reason)` (S2-3): the live opening voucher reversed, a new one posted, reason in the event; only while the first year is open. The opening voucher refuses party ledgers (their openings are bills) and checks Stock-in-Hand against the item-wise opening stock (S2-5) |
+| S2c | Migration 21: `sales_opening_bill`, `purchase_opening_bill` (party, number, bill date, due date, amount, voucher); allocation tables rebuilt so an allocation targets a document **or** an opening bill. A separate table, not a new document kind, so no GST return, register, TDS or e-invoice query can ever count an opening bill as a supply. Each bill posts Dr party / Cr Opening Balance Equity (sales) or the reverse, dated the first day; the bill keeps its own date for ageing |
+| S2d | Settlement engine: allocate to opening bills; outstanding, ageing and unallocated credits include them |
+| S2e | Screens: groups and ledgers; parties; units, categories, items, warehouses, opening stock (`accubook-ui-inventory`, the first feature UI module - packaging tested); bank accounts (`accubook-ui-banking`); opening balances with opening bills |

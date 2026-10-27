@@ -6,7 +6,7 @@ original text and gain a resolution block, so the reasoning stays auditable.
 
 **Resolved so far:** B-3, B-6 · B-7, B-8 (Phase 4) · P5-1…P5-4 (Phase 5) ·
 P6-1…P6-4 (Phase 6) · A-1 cost-layer persistence · I-4, I-5 · N-1 (Maven) ·
-B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28, P10-1…P10-5, B-2, I-16, P11-1, P11-2, I-14, S-1…S-4 (2026-10-24).
+B-1, P7-1…P7-12, P6-4-UI (2026-10-09) · P7-13…P7-21, P8-1…P8-6, I-1, I-2, B-4, P9-1…P9-4 (2026-10-10) · P9-5…P9-16 (2026-10-12) · P9-17…P9-24 (2026-10-13) · P9-25…P9-28, P10-1…P10-5, B-2, I-16, P11-1, P11-2, I-14, S-1…S-4 (2026-10-24) · S2-1…S2-5 (2026-10-27).
 
 **Still open:** B-5 · P9-29 · I-3, I-6…I-18 · N-2…N-9.
 
@@ -747,6 +747,18 @@ How many automatic re-binds per year before manual approval?
 ## I-13 · One licence = one machine, always?
 The brief says yes; ENTERPRISE customers will ask for more. Much easier to design
 multi-seat in now than to retrofit.
+
+## S2-1…S2-5 · Masters and opening balances (Phase 11S S2) — ✅ **DECIDED 2026-10-27**
+
+> **S2-1** user groups are sub-groups only, inheriting nature, gross-profit
+> placement and cash-flow class. **S2-2** ledgers under Sundry Debtors and
+> Sundry Creditors only through parties. **S2-3** the opening voucher can be
+> replaced (old one reversed, new one posted, reason recorded) while the first
+> year is open; afterwards corrections are journals. **S2-4** party openings
+> bill by bill (P11-1): each unpaid bill entered, allocatable and aged.
+> **S2-5** opening Stock-in-Hand is computed from the item-wise opening stock,
+> not typed; posting refused if they would disagree (typed when there is no
+> inventory module).
 
 ## S-1…S-4 · Screens (Phase 11S) — ✅ **DECIDED 2026-10-24**
 
