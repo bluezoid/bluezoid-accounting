@@ -103,12 +103,24 @@ CompanyPicker + MainWindow + ScreenCatalogue + ShellScreenContext +
 KernelScreens (trial balance, company settings). Feature screens go in
 `accubook-ui-<feature>` (build.sh packages ui-X with X). UI tests: build the
 screen with a real `ShellScreenContext` (see CompanySettingsIT); create JavaFX
-nodes in start(), never in field initialisers. **NEXT: S2 masters.**
+nodes in start(), never in field initialisers.
 Dormant viewer moved to P14 (views live in module code - gap).
+**S2 DONE (2026-10-27)**: S2-1..5 decided (sub-groups only; debtors via parties;
+replace opening while yr1 open; opening BILLS per party; Stock-in-Hand computed
+from OPENING stock movements). Migration 21 = sales/purchase_opening_bill +
+_opening_allocation (own tables, NOT a document kind - keeps GST queries clean);
+SettlementEngine routes an AllocationRequest whose id is an opening bill.
+`FiscalYears.replaceOpening/openingPosition`, `ChartOfAccounts(ModuleTransactions)`
++ createGroup/createLedger, `Banking.openAccount/accounts`. UI modules:
+`accubook-ui-inventory`, `accubook-ui-banking`, `accubook-ui-trade` (sales AND
+purchase screens, side-parameterised, 2 providers; ALWAYS_INCLUDED). Feature
+screen tests: `accubook-integration-tests/.../ui/FeatureScreenITBase` (built via
+provider); kernel screen tests: `ScreenITBase` in ui-shell. CSS ids: no spaces.
+`ScreenContext.rules()` reads storage - background only. **NEXT: S3 vouchers.**
 Mutation runs: use `mvn clean` on the test module (IDE trap struck again).
 NOTE: roadmap has NO phase for screens - biggest remaining item (told user).
 
-Suite: **900 passing, 0 failing** with UI on Xvfb (UI tests skipped by default).
+Suite: **940+ passing, 0 failing** with UI on Xvfb (UI tests skipped by default).
 Worktree trick to verify a committed intermediate state: `git worktree add
 --detach <scratch> HEAD` then `mvn -o -q clean verify` there, then remove.
 UI: `xvfb-run -a -s "-screen 0 1280x1024x24" mvn verify -Daccubook.ui.tests=true`.

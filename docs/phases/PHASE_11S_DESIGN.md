@@ -82,7 +82,7 @@ Settings), tabbed work area, status bar. A company picker on start, as now.
 | | Scope |
 |---|---|
 | **S1** ✅ 2026-10-24 | `ui-api`, main window, navigation from providers, company create/open with identity, fiscal start month and GST registration; FX-thread guard; packaging rule. *(Dormant viewer moved to Phase 14 - see §6.)* |
-| **S2** | Masters: groups and ledgers, parties, items/units/warehouses/opening stock, bank accounts, opening voucher |
+| **S2** ✅ 2026-10-27 | Masters: groups and ledgers, parties, items/units/warehouses/opening stock, bank accounts, opening voucher, opening bills |
 | **S3** | Vouchers: journal, payment, receipt, contra; list, view, reverse |
 | **S4** | Sales invoices, credit notes, purchase bills, debit notes; receipts and payments with allocation; quotations and orders; print/PDF of a tax invoice |
 | **S5** | Reports: trial balance, P&L, balance sheet, cash flow, day book, ledger, registers, outstanding and ageing; export and print |
@@ -152,3 +152,42 @@ screen matches the engine's.
 | S2c | Migration 21: `sales_opening_bill`, `purchase_opening_bill` (party, number, bill date, due date, amount, voucher); allocation tables rebuilt so an allocation targets a document **or** an opening bill. A separate table, not a new document kind, so no GST return, register, TDS or e-invoice query can ever count an opening bill as a supply. Each bill posts Dr party / Cr Opening Balance Equity (sales) or the reverse, dated the first day; the bill keeps its own date for ageing |
 | S2d | Settlement engine: allocate to opening bills; outstanding, ageing and unallocated credits include them |
 | S2e | Screens: groups and ledgers; parties; units, categories, items, warehouses, opening stock (`accubook-ui-inventory`, the first feature UI module - packaging tested); bank accounts (`accubook-ui-banking`); opening balances with opening bills |
+
+### S2 complete 2026-10-27
+**Engine:** `ChartOfAccounts.createGroup/createLedger/groups` over
+`ModuleTransactions`; `FiscalYears.replaceOpening/openingPosition` (the
+opening could never be corrected before); migration 21 and `OpeningBills`
+(sales and purchase), with the settlement engine allocating to them and
+counting them in outstanding, ageing and limits; `Banking.openAccount/accounts`.
+
+**Screens:** chart of accounts, customers and vendors (GSTIN/PAN checked),
+opening balances (kernel); items with GST and units, warehouses and opening
+stock (`accubook-ui-inventory`); bank accounts (`accubook-ui-banking`);
+opening invoices and bills (`accubook-ui-trade`).
+
+**Module layout decided in S2:** sales and purchase screens are one
+side-parameterised module, `accubook-ui-trade`, with two providers keyed to
+sales-invoicing and purchase-billing - the same code for both sides, each
+showing with its own module. It is packaged with trade, in every build.
+Feature screen tests live in `accubook-integration-tests` (classpath), built
+through the provider as the shell builds them.
+
+**Found and fixed**
+- The opening voucher could not be replaced after a reversal (S2-3).
+- A bank account's ledger was left behind when its details were refused.
+- `AmountInput` ignored commas wherever they fell: "900001,00,000" read as
+  nine hundred crore. Grouping must now be Indian or western.
+- Fields did not select their text on focus, so typing went before the old
+  value.
+- The company settings screen read the rule pack on the UI thread, which the
+  guard cannot see (installation database); `rules()` is now documented as
+  background-only.
+- A shortcut test pressed a key before its window had focus.
+
+**Limits**
+- A credit or debit note always corrects a real document, so none can be
+  raised against an opening bill; its unused credit can be applied to one.
+- Opening-stock entries cannot be edited on screen; a wrong one is corrected
+  by an adjustment movement (stock movements are never edited).
+- Income and expense ledgers are not offered on the opening screen: books
+  begin on a fiscal year's first day, when they are nil.
