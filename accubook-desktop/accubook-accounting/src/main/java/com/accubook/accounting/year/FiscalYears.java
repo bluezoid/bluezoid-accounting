@@ -86,6 +86,37 @@ public final class FiscalYears {
         return opening(balances, null, null);
     }
 
+    /** The opening balances in force, as entered, with the opening stock that will be added to them. */
+    public OpeningPosition openingPosition() {
+        return read(c -> {
+            List<FiscalYear> years = TrialBalanceQuery.fiscalYears(c);
+            FiscalYear first = years.get(years.size() - 1);
+            String live = liveOpening(c, first.id());
+            List<OpeningBalance> lines = new ArrayList<>();
+            if (live != null) {
+                try (PreparedStatement ps = c.prepareStatement("""
+                        SELECT e.ledger_id, e.debit_amount_e4, e.credit_amount_e4 FROM voucher_entry e
+                        JOIN ledger l ON l.id = e.ledger_id
+                        WHERE e.voucher_id = ? AND (l.system_code IS NULL
+                              OR l.system_code NOT IN ('OPENING_BALANCE_EQUITY', 'STOCK_IN_HAND'))
+                        ORDER BY e.sequence, e.rowid
+                        """)) {
+                    ps.setString(1, live);
+                    try (ResultSet r = ps.executeQuery()) {
+                        while (r.next()) {
+                            lines.add(new OpeningBalance(r.getString(1),
+                                    MoneyMapper.fromStored(r.getLong(2), Scale.MONEY),
+                                    MoneyMapper.fromStored(r.getLong(3), Scale.MONEY)));
+                        }
+                    }
+                }
+            }
+            long stock = openingStockValue(c, first.startDate());
+            return new OpeningPosition(first.startDate(), live != null, lines,
+                    stock < 0 ? null : MoneyMapper.fromStored(stock, Scale.MONEY).setScale(2), !first.closed());
+        });
+    }
+
     /**
      * S2-3: correct the opening balances while the first year is open. The live
      * opening voucher is reversed on the same date and the corrected one

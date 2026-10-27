@@ -313,4 +313,31 @@ class YearEndIT {
         assertThat(balance("Change in Stock", year1.endDate())).as("no trade: stock unchanged, no profit from it")
                 .isEqualByComparingTo("0");
     }
+
+    @Test
+    @DisplayName("the opening position shows what was entered - not the computed stock nor the balancing line")
+    void openingPosition() throws Exception {
+        assertThat(years.openingPosition().posted()).isFalse();
+        assertThat(years.openingPosition().booksBegin()).isEqualTo(year1.startDate());
+        Inventory inventory = new Inventory(transactions, guard);
+        var unit = inventory.createUnit("NOS", "Numbers", 0);
+        var lamp = inventory.createItem("Lamp", ItemKind.GOODS, unit.id(), null, null, null, null);
+        var main = inventory.createWarehouse("Main", null);
+        inventory.record(MovementRequest.in(MovementType.OPENING, lamp.id(), main.id(), d("2"), d("50"),
+                year1.startDate(), null));
+
+        years.postOpening(List.of(OpeningBalance.debit(cash, d("1000"))));
+
+        var position = years.openingPosition();
+        assertThat(position.posted()).isTrue();
+        assertThat(position.lines()).singleElement().satisfies(l -> {
+            assertThat(l.ledgerId()).isEqualTo(cash);
+            assertThat(l.debit()).isEqualByComparingTo("1000");
+        });
+        assertThat(position.openingStock()).isEqualByComparingTo("100.00");
+        assertThat(position.editable()).isTrue();
+        inventory.postValuation(year1.endDate());
+        years.close(year1.id(), "owner");
+        assertThat(years.openingPosition().editable()).isFalse();
+    }
 }
