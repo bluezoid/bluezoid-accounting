@@ -31,6 +31,7 @@
     <module>accubook-integration-tests</module>
     <module>accubook-ui-api</module>
     <module>accubook-ui-shell</module>
+    <module>accubook-ui-inventory</module>
     <module>accubook-launcher</module>
   </modules>
 
