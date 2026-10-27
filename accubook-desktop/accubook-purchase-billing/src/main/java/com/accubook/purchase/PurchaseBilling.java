@@ -10,6 +10,7 @@ import com.accubook.trade.Document;
 import com.accubook.trade.DocumentEngine;
 import com.accubook.trade.DocumentKind;
 import com.accubook.trade.DraftRequest;
+import com.accubook.trade.OpeningBills;
 import com.accubook.trade.SettlementEngine;
 
 import java.math.BigDecimal;
@@ -28,6 +29,7 @@ public final class PurchaseBilling {
 
     private final DocumentEngine engine;
     private final SettlementEngine settlements;
+    private final OpeningBills openingBills;
 
     public PurchaseBilling(ModuleTransactions transactions, EntitlementGuard entitlement) {
         this(transactions, entitlement, StockPort.installed(), Clock.systemUTC());
@@ -50,11 +52,18 @@ public final class PurchaseBilling {
                 posting, stock, rules, clock);
         this.settlements = new SettlementEngine(DocumentKind.Side.PURCHASE, PurchaseBillingModule.ID, transactions, entitlement,
                 posting, rules, clock);
+        this.openingBills = new OpeningBills(DocumentKind.Side.PURCHASE, PurchaseBillingModule.ID, transactions, entitlement,
+                posting, clock);
     }
 
     /** Payments, allocations, outstanding and aging for this side. */
     public SettlementEngine settlements() {
         return settlements;
+    }
+
+    /** S2-4: Vendors' bills unpaid from before the books begin, entered one by one. */
+    public OpeningBills openingBills() {
+        return openingBills;
     }
 
     public Document createDraft(DraftRequest request) {

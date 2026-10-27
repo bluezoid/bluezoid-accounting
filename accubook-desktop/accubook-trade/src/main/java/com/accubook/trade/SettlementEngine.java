@@ -61,6 +61,8 @@ public final class SettlementEngine {
     private final String settlements;
     private final String allocations;
     private final String documents;
+    private final String openingBills;
+    private final String openingAllocations;
 
     public SettlementEngine(DocumentKind.Side side, ModuleId module, ModuleTransactions transactions,
                             EntitlementGuard entitlement, TransactionalPosting posting, Clock clock) {
@@ -81,6 +83,8 @@ public final class SettlementEngine {
         this.settlements = side.tablePrefix() + "_settlement";
         this.allocations = side.tablePrefix() + "_allocation";
         this.documents = side.tablePrefix() + "_document";
+        this.openingBills = side.tablePrefix() + "_opening_bill";
+        this.openingAllocations = side.tablePrefix() + "_opening_allocation";
     }
 
     private boolean receipts() {
@@ -188,15 +192,19 @@ public final class SettlementEngine {
             throw new TradeException("Removing an allocation needs a reason");
         }
         write("remove the allocation", connection -> {
-            try (PreparedStatement ps = connection.prepareStatement("UPDATE " + allocations
-                    + " SET removed_date = MAX(effective_date, ?), removal_reason = ? "
-                    + "WHERE id = ? AND removed_date IS NULL")) {
-                ps.setString(1, removedOn.toString());
-                ps.setString(2, reason.strip());
-                ps.setString(3, allocationId);
-                if (ps.executeUpdate() == 0) {
-                    throw new TradeException("No such allocation, or it was already removed");
+            int removed = 0;
+            for (String table : List.of(allocations, openingAllocations)) {
+                try (PreparedStatement ps = connection.prepareStatement("UPDATE " + table
+                        + " SET removed_date = MAX(effective_date, ?), removal_reason = ? "
+                        + "WHERE id = ? AND removed_date IS NULL")) {
+                    ps.setString(1, removedOn.toString());
+                    ps.setString(2, reason.strip());
+                    ps.setString(3, allocationId);
+                    removed += ps.executeUpdate();
                 }
+            }
+            if (removed == 0) {
+                throw new TradeException("No such allocation, or it was already removed");
             }
         });
     }
@@ -278,8 +286,10 @@ public final class SettlementEngine {
         return read(connection -> {
             List<Allocation> result = new ArrayList<>();
             try (PreparedStatement ps = connection.prepareStatement("SELECT id, source_type, source_id, document_id, "
-                    + "amount_e4, effective_date, removed_date FROM " + allocations
-                    + " WHERE document_id = ? ORDER BY effective_date, created_at")) {
+                    + "amount_e4, effective_date, removed_date, created_at FROM " + allocations + " WHERE document_id = ?1 "
+                    + "UNION ALL SELECT id, source_type, source_id, opening_bill_id, amount_e4, effective_date, "
+                    + "removed_date, created_at FROM " + openingAllocations + " WHERE opening_bill_id = ?1 "
+                    + "ORDER BY 6, 8")) {
                 ps.setString(1, documentId);
                 try (ResultSet rows = ps.executeQuery()) {
                     while (rows.next()) {
@@ -330,15 +340,26 @@ public final class SettlementEngine {
                            d.settle_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM %2$s a
                                                   WHERE a.document_id = d.id AND a.effective_date <= ?1
                                                     AND (a.removed_date IS NULL OR a.removed_date > ?1)), 0)
-                               AS outstanding_e4
+                               AS outstanding_e4,
+                           0, COALESCE(d.due_date, d.document_date) AS sort_date
                     FROM %1$s d
                     WHERE d.original_document_id IS NULL
                       AND d.document_date <= ?1
                       AND (d.status = 'POSTED'
                            OR (d.status = 'CANCELLED'
                                AND (SELECT voucher_date FROM voucher WHERE id = d.cancellation_voucher_id) > ?1))
-                    ORDER BY COALESCE(d.due_date, d.document_date), d.number
-                    """.formatted(documents, allocations))) {
+                    UNION ALL
+                    SELECT b.id, b.number, b.party_id, b.bill_date, b.due_date, b.amount_e4,
+                           b.amount_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM %4$s a
+                                                  WHERE a.opening_bill_id = b.id AND a.effective_date <= ?1
+                                                    AND (a.removed_date IS NULL OR a.removed_date > ?1)), 0),
+                           1, COALESCE(b.due_date, b.bill_date)
+                    FROM %3$s b
+                    WHERE b.bill_date <= ?1
+                      AND (b.status = 'POSTED'
+                           OR (SELECT voucher_date FROM voucher WHERE id = b.cancellation_voucher_id) > ?1)
+                    ORDER BY 9, 2
+                    """.formatted(documents, allocations, openingBills, openingAllocations))) {
                 ps.setString(1, asOf.toString());
                 try (ResultSet rows = ps.executeQuery()) {
                     while (rows.next()) {
@@ -353,7 +374,7 @@ public final class SettlementEngine {
                         result.add(new OutstandingDocument(rows.getString(1), rows.getString(2), rows.getString(3),
                                 date, dueDate, MoneyMapper.fromStored(rows.getLong(6), Scale.MONEY),
                                 MoneyMapper.fromStored(outstandingE4, Scale.MONEY), Math.max(0, daysPast),
-                                AgingBucket.of(daysPast)));
+                                AgingBucket.of(daysPast), rows.getInt(8) == 1));
                     }
                 }
             }
@@ -371,6 +392,8 @@ public final class SettlementEngine {
                     SELECT 'SETTLEMENT', s.id, s.number, s.party_id, s.settlement_date,
                            s.amount_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM %2$s a
                                WHERE a.source_type = 'SETTLEMENT' AND a.source_id = s.id AND %4$s), 0)
+                                       - COALESCE((SELECT SUM(a.amount_e4) FROM %5$s a
+                               WHERE a.source_type = 'SETTLEMENT' AND a.source_id = s.id AND %4$s), 0)
                     FROM %1$s s
                     WHERE s.settlement_date <= ?1
                       AND (s.status = 'POSTED'
@@ -379,13 +402,15 @@ public final class SettlementEngine {
                     SELECT 'NOTE', n.id, n.number, n.party_id, n.document_date,
                            n.settle_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM %2$s a
                                WHERE a.source_type = 'NOTE' AND a.source_id = n.id AND %4$s), 0)
+                                       - COALESCE((SELECT SUM(a.amount_e4) FROM %5$s a
+                               WHERE a.source_type = 'NOTE' AND a.source_id = n.id AND %4$s), 0)
                     FROM %3$s n
                     WHERE n.original_document_id IS NOT NULL AND n.document_date <= ?1
                       AND (n.status = 'POSTED'
                            OR (n.status = 'CANCELLED'
                                AND (SELECT voucher_date FROM voucher WHERE id = n.cancellation_voucher_id) > ?1))
                     ORDER BY 5, 3
-                    """.formatted(settlements, allocations, documents, live))) {
+                    """.formatted(settlements, allocations, documents, live, openingAllocations))) {
                 ps.setString(1, asOf.toString());
                 try (ResultSet rows = ps.executeQuery()) {
                     while (rows.next()) {
@@ -457,6 +482,10 @@ public final class SettlementEngine {
 
     private void insertAllocation(Connection connection, Allocation.SourceType sourceType, String sourceId,
                                   LocalDate sourceDate, AllocationRequest allocation) throws SQLException {
+        if (isOpeningBill(connection, allocation.documentId())) {
+            insertOpeningAllocation(connection, sourceType, sourceId, sourceDate, allocation);
+            return;
+        }
         LocalDate documentDate;
         String partyOfDocument;
         long outstandingE4;
@@ -505,18 +534,78 @@ public final class SettlementEngine {
         }
     }
 
+    private boolean isOpeningBill(Connection connection, String id) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT 1 FROM " + openingBills + " WHERE id = ?")) {
+            ps.setString(1, id);
+            try (ResultSet rows = ps.executeQuery()) {
+                return rows.next();
+            }
+        }
+    }
+
+    /** S2-4: money applied to a bill from before the books, by the same rules as to a document. */
+    private void insertOpeningAllocation(Connection connection, Allocation.SourceType sourceType, String sourceId,
+                                         LocalDate sourceDate, AllocationRequest allocation) throws SQLException {
+        String party;
+        try (PreparedStatement ps = connection.prepareStatement("SELECT party_id, status, number, amount_e4 - "
+                + "COALESCE((SELECT SUM(amount_e4) FROM " + openingAllocations + " WHERE opening_bill_id = b.id "
+                + "AND removed_date IS NULL), 0) FROM " + openingBills + " b WHERE b.id = ?")) {
+            ps.setString(1, allocation.documentId());
+            try (ResultSet rows = ps.executeQuery()) {
+                rows.next();
+                if (!"POSTED".equals(rows.getString(2))) {
+                    throw new TradeException("Opening bill " + rows.getString(3) + " is cancelled");
+                }
+                party = rows.getString(1);
+                if (money(allocation.amount()) > rows.getLong(4)) {
+                    throw new TradeException("Only " + plain(MoneyMapper.fromStored(rows.getLong(4), Scale.MONEY))
+                            + " is outstanding on " + rows.getString(3) + "; cannot apply "
+                            + plain(allocation.amount()));
+                }
+            }
+        }
+        if (!party.equals(partyOf(connection, sourceType, sourceId))) {
+            throw new TradeException("Money can only be applied to the same party's documents");
+        }
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO " + openingAllocations
+                + " (id, source_type, source_id, opening_bill_id, amount_e4, effective_date, created_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setString(1, Ids.newIdString());
+            ps.setString(2, sourceType.name());
+            ps.setString(3, sourceId);
+            ps.setString(4, allocation.documentId());
+            ps.setLong(5, money(allocation.amount()));
+            // The bill is from before the books, so the money counts from when it came.
+            ps.setString(6, sourceDate.toString());
+            ps.setLong(7, now());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            if (String.valueOf(e.getMessage()).contains("holds")) {
+                throw new TradeException("This would apply more than the " + noun() + " or note holds", e);
+            }
+            if (String.valueOf(e.getMessage()).contains("UNIQUE")) {
+                throw new TradeException("This is already applied to that bill; remove it to change the amount", e);
+            }
+            throw e;
+        }
+    }
+
     /** Package-visible for the document engine's note handling. */
     static void removeAllocationsOfSource(Connection connection, String allocationsTable,
                                           Allocation.SourceType sourceType, String sourceId, LocalDate on,
                                           String reason) throws SQLException {
-        try (PreparedStatement ps = connection.prepareStatement("UPDATE " + allocationsTable
-                + " SET removed_date = MAX(effective_date, ?), removal_reason = ? "
-                + "WHERE source_type = ? AND source_id = ? AND removed_date IS NULL")) {
-            ps.setString(1, on.toString());
-            ps.setString(2, reason);
-            ps.setString(3, sourceType.name());
-            ps.setString(4, sourceId);
-            ps.executeUpdate();
+        // What the source applied to opening bills goes with it too.
+        String openingTable = allocationsTable.replace("_allocation", "_opening_allocation");
+        for (String table : List.of(allocationsTable, openingTable)) {
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE " + table
+                    + " SET removed_date = MAX(effective_date, ?), removal_reason = ? "
+                    + "WHERE source_type = ? AND source_id = ? AND removed_date IS NULL")) {
+                ps.setString(1, on.toString());
+                ps.setString(2, reason);
+                ps.setString(3, sourceType.name());
+                ps.setString(4, sourceId);
+                ps.executeUpdate();
+            }
         }
     }
 
@@ -594,6 +683,8 @@ public final class SettlementEngine {
         try (PreparedStatement ps = connection.prepareStatement("SELECT s.id, s.number, s.party_id, s.settlement_date, "
                 + "s.amount_e4, s.account_ledger_id, s.mode, s.reference_no, s.status, s.voucher_id, "
                 + "s.amount_e4 - COALESCE((SELECT SUM(a.amount_e4) FROM " + allocations + " a "
+                + "WHERE a.source_type = 'SETTLEMENT' AND a.source_id = s.id AND a.removed_date IS NULL), 0) "
+                + "- COALESCE((SELECT SUM(a.amount_e4) FROM " + openingAllocations + " a "
                 + "WHERE a.source_type = 'SETTLEMENT' AND a.source_id = s.id AND a.removed_date IS NULL), 0), "
                 + "s.tds_e4, s.tds_section FROM " + settlements + " s" + where)) {
             for (int i = 0; i < parameters.length; i++) {
