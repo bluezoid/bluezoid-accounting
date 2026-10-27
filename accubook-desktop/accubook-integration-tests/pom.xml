@@ -20,12 +20,21 @@
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-purchase-orders</artifactId><version>${project.version}</version><scope>test</scope></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-taxation-returns</artifactId><version>${project.version}</version><scope>test</scope></dependency>
     <dependency><groupId>com.accubook</groupId><artifactId>accubook-banking</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>com.accubook</groupId><artifactId>accubook-ui-inventory</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testfx</groupId><artifactId>testfx-junit5</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <!-- Feature screens' UI tests (Phase 11S) need a display, as the shell's do. -->
+          <systemPropertyVariables>
+            <testfx.robot>glass</testfx.robot>
+            <prism.order>sw</prism.order>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
     </plugins>
   </build>
